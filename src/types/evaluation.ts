@@ -10,6 +10,7 @@ export interface GeminiMeetingResponse {
   human_summary: {
     headline: string;
     overall_assessment: string;
+    key_topics: string[];
     strength_axis: string;
     strength_reason: string;
     weakness_axis: string;
@@ -17,6 +18,7 @@ export interface GeminiMeetingResponse {
     special_notes: string[];
     decisions: string[];
     action_items: string[];
+    recommendations: string[];
     participation_note: string;
   };
 }
@@ -34,6 +36,9 @@ export interface GeminiIndividualResponse {
     quotes: string[];
     notes: string[];
   };
+  strengths: string[];
+  improvements: string[];
+  communication_style: string;
   summary: string;
 }
 
@@ -50,6 +55,7 @@ export interface OutMeetingEval {
   participation_balance: number | null;
   headline: string | null;
   overall_assessment: string | null;
+  key_topics: string[] | null;
   strength_axis: string | null;
   strength_reason: string | null;
   weakness_axis: string | null;
@@ -57,6 +63,7 @@ export interface OutMeetingEval {
   special_notes: string[] | null;
   decisions: string[] | null;
   action_items: string[] | null;
+  recommendations: string[] | null;
   participation_note: string | null;
   raw_response: string | null;
   created_at?: string;
@@ -77,6 +84,9 @@ export interface OutIndividualEval {
   execution_linkage: number | null;
   evidence_quotes: string[] | null;
   evidence_notes: string[] | null;
+  strengths: string[] | null;
+  improvements: string[] | null;
+  communication_style: string | null;
   summary: string | null;
   raw_response: string | null;
   created_at?: string;
