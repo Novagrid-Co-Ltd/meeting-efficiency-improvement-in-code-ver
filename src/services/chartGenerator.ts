@@ -17,51 +17,63 @@ export function generateRadarChartUrl(data: RadarChartData): string {
           backgroundColor: "rgba(54, 162, 235, 0.2)",
           borderColor: "rgb(54, 162, 235)",
           pointBackgroundColor: "rgb(54, 162, 235)",
+          borderWidth: 2,
+          pointRadius: 4,
         },
       ],
     },
     options: {
-      scales: {
-        r: {
+      scale: {
+        ticks: {
           beginAtZero: true,
+          min: 0,
           max: 5,
-          ticks: { stepSize: 1 },
+          stepSize: 1,
+          display: true,
+        },
+        pointLabels: {
+          fontSize: 12,
         },
       },
       plugins: {
         legend: { display: false },
       },
+      elements: {
+        line: {
+          tension: 0,
+        },
+      },
     },
   };
 
   const encoded = encodeURIComponent(JSON.stringify(chartConfig));
-  return `${getConfig().quickchartBaseUrl}/chart?c=${encoded}&w=400&h=400`;
+  return `${getConfig().quickchartBaseUrl}/chart?c=${encoded}&w=400&h=400&f=png`;
 }
 
 export function buildMeetingChartUrl(scores: {
   goal_clarity: number;
-  agenda_structure: number;
+  decision_made: number;
+  todo_clarity: number;
+  role_clarity: number;
   time_efficiency: number;
   participation_balance: number;
-  decision_quality: number;
-  action_item_clarity: number;
 }): string {
   return generateRadarChartUrl({
     labels: [
-      "Goal Clarity",
-      "Agenda Structure",
-      "Time Efficiency",
-      "Participation Balance",
-      "Decision Quality",
-      "Action Item Clarity",
+      "目的の明確さ",
+      "意思決定",
+      "TODO明確化",
+      "役割明確さ",
+      "時間効率",
+      "発言バランス",
     ],
     values: [
       scores.goal_clarity,
-      scores.agenda_structure,
+      scores.decision_made,
+      scores.todo_clarity,
+      scores.role_clarity,
       scores.time_efficiency,
       scores.participation_balance,
-      scores.decision_quality,
-      scores.action_item_clarity,
     ],
   });
 }
@@ -76,12 +88,12 @@ export function buildIndividualChartUrl(scores: {
 }): string {
   return generateRadarChartUrl({
     labels: [
-      "Issue Comprehension",
-      "Value Density",
-      "Structured Thinking",
-      "Collaborative Influence",
-      "Decision Drive",
-      "Execution Linkage",
+      "課題理解度",
+      "発言価値密度",
+      "構造的思考",
+      "協調的影響力",
+      "意思決定推進",
+      "実行連携度",
     ],
     values: [
       scores.issue_comprehension,
