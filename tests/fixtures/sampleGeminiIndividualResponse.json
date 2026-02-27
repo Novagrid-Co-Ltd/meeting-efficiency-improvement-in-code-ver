@@ -1,0 +1,21 @@
+{
+  "scores": {
+    "issue_comprehension": 5,
+    "value_density": 4,
+    "structured_thinking": 4,
+    "collaborative_influence": 3,
+    "decision_drive": 4,
+    "execution_linkage": 5
+  },
+  "evidence": {
+    "quotes": [
+      "リリースは来週の予定ですが、テストがまだ完了していません。",
+      "おはようございます。今日のアジェンダを確認しましょう。"
+    ],
+    "notes": [
+      "会議の進行をリードしていた",
+      "具体的なスケジュールと課題を明確に提示"
+    ]
+  },
+  "summary": "田中さんは会議の進行役として効果的に機能し、課題の明確化とアクションアイテムの設定に大きく貢献しました。"
+}

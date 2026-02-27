@@ -1,0 +1,19 @@
+{
+  "summary_scores": {
+    "goal_clarity": 4,
+    "agenda_structure": 3,
+    "time_efficiency": 4,
+    "participation_balance": 3,
+    "decision_quality": 4,
+    "action_item_clarity": 5
+  },
+  "human_summary": {
+    "headline": "プロジェクト進捗確認ミーティング",
+    "overall_assessment": "全体的に効率的な会議でした。アジェンダに沿って議論が進み、具体的なアクションアイテムが決まりました。",
+    "what_went_well": ["時間管理が良好", "具体的な決定事項があった"],
+    "what_to_improve": ["参加者の発言バランスを改善する余地がある"],
+    "decisions": ["リリース日を来週金曜日に確定"],
+    "action_items": ["田中: テスト完了を木曜日までに", "佐藤: ドキュメント更新"],
+    "participation_note": "田中と佐藤が主に発言。他の参加者の発言機会を増やすことが望ましい。"
+  }
+}
