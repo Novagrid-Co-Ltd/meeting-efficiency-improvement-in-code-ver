@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) {
@@ -11,8 +13,12 @@ function optionalEnv(key: string, defaultValue: string): string {
 }
 
 export interface Config {
-  googleServiceAccountJson: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  googleRefreshToken: string;
   geminiApiKey: string;
+  openaiApiKey: string;
+  llmProvider: "gemini" | "openai";
   supabaseUrl: string;
   supabaseServiceKey: string;
   apiKey: string;
@@ -29,8 +35,12 @@ let _config: Config | null = null;
 export function getConfig(): Config {
   if (!_config) {
     _config = {
-      googleServiceAccountJson: requireEnv("GOOGLE_SERVICE_ACCOUNT_JSON"),
-      geminiApiKey: requireEnv("GEMINI_API_KEY"),
+      googleClientId: requireEnv("GOOGLE_CLIENT_ID"),
+      googleClientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
+      googleRefreshToken: requireEnv("GOOGLE_REFRESH_TOKEN"),
+      geminiApiKey: process.env["GEMINI_API_KEY"] || "",
+      openaiApiKey: process.env["OPENAI_API_KEY"] || "",
+      llmProvider: (optionalEnv("LLM_PROVIDER", "gemini") as "gemini" | "openai"),
       supabaseUrl: requireEnv("SUPABASE_URL"),
       supabaseServiceKey: requireEnv("SUPABASE_SERVICE_KEY"),
       apiKey: requireEnv("API_KEY"),
