@@ -6,19 +6,22 @@ import type { TfMeetingAttendee } from "../../src/types/meeting.js";
 const mockMeetingEval: OutMeetingEval = {
   meet_instance_key: "event-001__2026-02-20T10:00:00+09:00",
   evaluation_status: "success",
-  prompt_version: "v0.1.0",
+  prompt_version: "v1.0.0",
   goal_clarity: 4,
-  agenda_structure: 3,
+  decision_made: 4,
+  todo_clarity: 5,
+  role_clarity: 3,
   time_efficiency: 4,
   participation_balance: 3,
-  decision_quality: 4,
-  action_item_clarity: 5,
   headline: "プロジェクト進捗確認",
   overall_assessment: "効率的な会議でした。",
-  what_went_well: ["時間管理", "決定事項の明確さ"],
-  what_to_improve: ["参加バランス"],
+  strength_axis: "todo_clarity",
+  strength_reason: "次のアクションが具体的に定義され、担当者と期限が明確に設定された。",
+  weakness_axis: "participation_balance",
+  weakness_reason: "発言が特定の参加者に偏っていた。",
+  special_notes: ["時間管理が良好", "重要な意思決定がなされた"],
   decisions: ["リリース日確定"],
-  action_items: ["田中: テスト完了"],
+  action_items: ["[high] 田中: テスト完了"],
   participation_note: "2名が主に発言",
   raw_response: null,
 };
@@ -33,7 +36,7 @@ const mockIndividualEvals: OutIndividualEval[] = [
     meet_instance_key: "event-001__2026-02-20T10:00:00+09:00",
     email: "tanaka@novagrid.tech",
     evaluation_status: "success",
-    prompt_version: "v0.1.0",
+    prompt_version: "v1.0.0",
     issue_comprehension: 5,
     value_density: 4,
     structured_thinking: 4,
@@ -62,10 +65,19 @@ describe("buildMeetingReport", () => {
     expect(report.html).toContain("3/5");
   });
 
-  it("includes scores in text", () => {
+  it("includes Japanese axis labels in text", () => {
     const report = buildMeetingReport(mockMeetingEval, mockAttendees);
-    expect(report.text).toContain("Goal Clarity: 4/5");
-    expect(report.text).toContain("Action Item Clarity: 5/5");
+    expect(report.text).toContain("目的の明確さ: 4/5");
+    expect(report.text).toContain("TODO明確化: 5/5");
+    expect(report.text).toContain("発言バランス: 3/5");
+  });
+
+  it("includes strength and weakness analysis", () => {
+    const report = buildMeetingReport(mockMeetingEval, mockAttendees);
+    expect(report.html).toContain("強み軸");
+    expect(report.html).toContain("弱み軸");
+    expect(report.text).toContain("強み軸: TODO明確化");
+    expect(report.text).toContain("弱み軸: 発言バランス");
   });
 
   it("includes headline in subject", () => {
@@ -90,14 +102,16 @@ describe("buildIndividualReports", () => {
     expect(reports[0]!.to).toBe("tanaka@novagrid.tech");
   });
 
-  it("includes scores in HTML", () => {
+  it("includes Japanese axis labels in HTML", () => {
     const reports = buildIndividualReports(mockIndividualEvals);
+    expect(reports[0]!.html).toContain("課題理解度");
     expect(reports[0]!.html).toContain("5/5");
     expect(reports[0]!.html).toContain("4/5");
   });
 
-  it("includes summary in text", () => {
+  it("includes Japanese axis labels in text", () => {
     const reports = buildIndividualReports(mockIndividualEvals);
-    expect(reports[0]!.text).toContain("Issue Comprehension: 5/5");
+    expect(reports[0]!.text).toContain("課題理解度: 5/5");
+    expect(reports[0]!.text).toContain("実行連携度: 5/5");
   });
 });

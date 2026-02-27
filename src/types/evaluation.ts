@@ -1,17 +1,20 @@
 export interface GeminiMeetingResponse {
   summary_scores: {
     goal_clarity: number;
-    agenda_structure: number;
+    decision_made: number;
+    todo_clarity: number;
+    role_clarity: number;
     time_efficiency: number;
     participation_balance: number;
-    decision_quality: number;
-    action_item_clarity: number;
   };
   human_summary: {
     headline: string;
     overall_assessment: string;
-    what_went_well: string[];
-    what_to_improve: string[];
+    strength_axis: string;
+    strength_reason: string;
+    weakness_axis: string;
+    weakness_reason: string;
+    special_notes: string[];
     decisions: string[];
     action_items: string[];
     participation_note: string;
@@ -40,15 +43,18 @@ export interface OutMeetingEval {
   evaluation_status: "success" | "failed";
   prompt_version: string;
   goal_clarity: number | null;
-  agenda_structure: number | null;
+  decision_made: number | null;
+  todo_clarity: number | null;
+  role_clarity: number | null;
   time_efficiency: number | null;
   participation_balance: number | null;
-  decision_quality: number | null;
-  action_item_clarity: number | null;
   headline: string | null;
   overall_assessment: string | null;
-  what_went_well: string[] | null;
-  what_to_improve: string[] | null;
+  strength_axis: string | null;
+  strength_reason: string | null;
+  weakness_axis: string | null;
+  weakness_reason: string | null;
+  special_notes: string[] | null;
   decisions: string[] | null;
   action_items: string[] | null;
   participation_note: string | null;

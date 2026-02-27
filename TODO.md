@@ -16,8 +16,8 @@
 - [x] E2Eテスト疎通確認 (n8n → Cloudflare Tunnel → ローカルAPI → 全パイプライン成功)
 
 ## 未着手
-- [ ] プロンプト本番化: n8nの実プロンプトを移植 (meetingEval.ts, individualEval.ts)
-- [ ] master_person_identity テーブルへの初期データ投入 (社員名・メール)
+- [x] プロンプト本番化: 6軸名更新、日本語プロンプト、コンテンツ構造改善 (meetingEval.ts, individualEval.ts)
+- [x] master_person_identity テーブルへの初期データ投入 (社員名・メール)
 - [ ] Cloud Run デプロイ (Dockerfile → GCR → Cloud Run)
 - [ ] Cloud Run デプロイ後、n8nのURLをCloudflare TunnelからCloud Run URLに変更
 - [ ] エラーハンドリング改善 (Google Docs API 404時のわかりやすいエラーメッセージ)
