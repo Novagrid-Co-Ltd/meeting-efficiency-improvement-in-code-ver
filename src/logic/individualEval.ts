@@ -34,6 +34,9 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
       execution_linkage: parsed.scores.execution_linkage,
       evidence_quotes: parsed.evidence.quotes,
       evidence_notes: parsed.evidence.notes,
+      strengths: parsed.strengths,
+      improvements: parsed.improvements,
+      communication_style: parsed.communication_style,
       summary: parsed.summary,
       raw_response: raw,
     };
@@ -55,6 +58,9 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
       execution_linkage: null,
       evidence_quotes: null,
       evidence_notes: null,
+      strengths: null,
+      improvements: null,
+      communication_style: null,
       summary: null,
       raw_response: raw,
     };
@@ -90,6 +96,9 @@ export async function runAll(inputs: TfIndividualScoreInput[]): Promise<OutIndiv
         execution_linkage: null,
         evidence_quotes: null,
         evidence_notes: null,
+        strengths: null,
+        improvements: null,
+        communication_style: null,
         summary: null,
         raw_response: null,
       });

@@ -101,7 +101,7 @@ router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res
       };
       res.status(err.statusCode).json(errorResponse);
     } else {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "message" in err) ? String((err as { message: unknown }).message) : JSON.stringify(err);
       logger.error("Unexpected error in processMeeting", { error: message });
       const errorResponse: ErrorResponse = {
         ok: false,

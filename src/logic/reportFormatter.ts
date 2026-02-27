@@ -26,6 +26,11 @@ function listToText(items: string[] | null): string {
   return items.map((item) => `  - ${item}`).join("\n");
 }
 
+function numberedListToText(items: string[] | null): string {
+  if (!items || items.length === 0) return "  N/A";
+  return items.map((item, i) => `  ${i + 1}. ${item}`).join("\n");
+}
+
 function axisLabel(key: string | null): string {
   if (!key) return "N/A";
   return AXIS_LABELS[key] ?? key;
@@ -50,25 +55,37 @@ export function buildMeetingReport(
     });
   }
 
+  const avgScore = evalResult.evaluation_status === "success"
+    ? ((evalResult.goal_clarity ?? 0) + (evalResult.decision_made ?? 0) + (evalResult.todo_clarity ?? 0) + (evalResult.role_clarity ?? 0) + (evalResult.time_efficiency ?? 0) + (evalResult.participation_balance ?? 0)) / 6
+    : 0;
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
-  body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; }
-  h1 { color: #1a73e8; }
-  h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+  body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; }
+  h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }
+  h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-top: 24px; }
   .score-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
   .score-table td, .score-table th { border: 1px solid #ddd; padding: 8px; text-align: left; }
   .score-table th { background: #f5f5f5; }
-  .axis-box { background: #f8f9fa; border-left: 4px solid #1a73e8; padding: 12px; margin: 8px 0; }
+  .avg-score { font-size: 1.2em; color: #1a73e8; font-weight: bold; margin: 8px 0; }
+  .axis-box { background: #f8f9fa; border-left: 4px solid #1a73e8; padding: 12px; margin: 8px 0; line-height: 1.6; }
   .axis-box.weak { border-left-color: #ea4335; }
+  .section-desc { color: #666; line-height: 1.6; }
+  .topic-list { background: #f0f4ff; padding: 12px; border-radius: 4px; }
+  .recommendation { background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px; margin: 8px 0; line-height: 1.6; }
 </style></head>
 <body>
   <h1>${escapeHtml(evalResult.headline ?? "会議評価レポート")}</h1>
-  <p>${escapeHtml(evalResult.overall_assessment ?? "")}</p>
+
+  <h2>AI分析ヘッドライン</h2>
+  <p class="section-desc">${escapeHtml(evalResult.overall_assessment ?? "")}</p>
+
+  <p class="avg-score">総合平均スコア: ${avgScore.toFixed(1)} / 5.0</p>
 
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>スコア</h2>
+  <h2>6軸スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>スコア</th></tr>
     <tr><td>目的の明確さ</td><td>${evalResult.goal_clarity ?? "-"}/5</td></tr>
@@ -78,6 +95,9 @@ export function buildMeetingReport(
     <tr><td>時間効率</td><td>${evalResult.time_efficiency ?? "-"}/5</td></tr>
     <tr><td>発言バランス</td><td>${evalResult.participation_balance ?? "-"}/5</td></tr>
   </table>
+
+  <h2>主な議題</h2>
+  <div class="topic-list">${listToHtml(evalResult.key_topics)}</div>
 
   <h2>強み軸: ${escapeHtml(axisLabel(evalResult.strength_axis))}</h2>
   <div class="axis-box">${escapeHtml(evalResult.strength_reason ?? "N/A")}</div>
@@ -94,16 +114,24 @@ export function buildMeetingReport(
   <h2>アクションアイテム</h2>
   ${listToHtml(evalResult.action_items)}
 
-  <h2>発言バランス</h2>
-  <p>${escapeHtml(evalResult.participation_note ?? "N/A")}</p>
+  <h2>改善提言</h2>
+  ${(evalResult.recommendations ?? []).map(r => `<div class="recommendation">${escapeHtml(r)}</div>`).join("") || "<p>N/A</p>"}
+
+  <h2>発言バランス分析</h2>
+  <p class="section-desc">${escapeHtml(evalResult.participation_note ?? "N/A")}</p>
 </body>
 </html>`;
 
-  const text = `会議評価レポート: ${evalResult.headline ?? "評価結果"}
+  const text = `━━━━━━━━━━━━━━━━━━
+■ 会議評価レポート: ${evalResult.headline ?? "評価結果"}
+━━━━━━━━━━━━━━━━━━
 
+■ AI分析ヘッドライン
 ${evalResult.overall_assessment ?? ""}
 
-スコア:
+■ 総合平均スコア: ${avgScore.toFixed(1)} / 5.0
+
+■ 6軸スコア
   目的の明確さ: ${evalResult.goal_clarity ?? "-"}/5
   意思決定: ${evalResult.decision_made ?? "-"}/5
   TODO明確化: ${evalResult.todo_clarity ?? "-"}/5
@@ -111,22 +139,28 @@ ${evalResult.overall_assessment ?? ""}
   時間効率: ${evalResult.time_efficiency ?? "-"}/5
   発言バランス: ${evalResult.participation_balance ?? "-"}/5
 
-強み軸: ${axisLabel(evalResult.strength_axis)}
+■ 主な議題
+${numberedListToText(evalResult.key_topics)}
+
+■ 強み軸: ${axisLabel(evalResult.strength_axis)}
   ${evalResult.strength_reason ?? "N/A"}
 
-弱み軸: ${axisLabel(evalResult.weakness_axis)}
+■ 弱み軸: ${axisLabel(evalResult.weakness_axis)}
   ${evalResult.weakness_reason ?? "N/A"}
 
-特筆事項:
-${listToText(evalResult.special_notes)}
+■ 特筆事項
+${numberedListToText(evalResult.special_notes)}
 
-決定事項:
+■ 決定事項
 ${listToText(evalResult.decisions)}
 
-アクションアイテム:
+■ アクションアイテム
 ${listToText(evalResult.action_items)}
 
-発言バランス:
+■ 改善提言
+${numberedListToText(evalResult.recommendations)}
+
+■ 発言バランス分析
   ${evalResult.participation_note ?? "N/A"}`;
 
   return { to, subject, html, text, chartUrl };
@@ -150,23 +184,35 @@ export function buildIndividualReports(
       });
     }
 
+    const avgScore = evalResult.evaluation_status === "success"
+      ? ((evalResult.issue_comprehension ?? 0) + (evalResult.value_density ?? 0) + (evalResult.structured_thinking ?? 0) + (evalResult.collaborative_influence ?? 0) + (evalResult.decision_drive ?? 0) + (evalResult.execution_linkage ?? 0)) / 6
+      : 0;
+
     const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
-  body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; }
-  h1 { color: #1a73e8; }
-  h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+  body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; }
+  h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }
+  h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-top: 24px; }
   .score-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
   .score-table td, .score-table th { border: 1px solid #ddd; padding: 8px; text-align: left; }
   .score-table th { background: #f5f5f5; }
+  .avg-score { font-size: 1.2em; color: #1a73e8; font-weight: bold; margin: 8px 0; }
+  .section-desc { color: #666; line-height: 1.6; }
+  .strength-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  .improve-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  .comm-box { background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  blockquote { border-left: 3px solid #ccc; margin: 8px 0; padding: 4px 12px; color: #555; font-style: italic; }
 </style></head>
 <body>
   <h1>個人評価レポート</h1>
   <p><strong>${escapeHtml(evalResult.email)}</strong></p>
 
+  <p class="avg-score">総合平均スコア: ${avgScore.toFixed(1)} / 5.0</p>
+
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>スコア</h2>
+  <h2>6軸スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>スコア</th></tr>
     <tr><td>課題理解度</td><td>${evalResult.issue_comprehension ?? "-"}/5</td></tr>
@@ -177,20 +223,33 @@ export function buildIndividualReports(
     <tr><td>実行連携度</td><td>${evalResult.execution_linkage ?? "-"}/5</td></tr>
   </table>
 
-  <h2>サマリー</h2>
-  <p>${escapeHtml(evalResult.summary ?? "N/A")}</p>
+  <h2>総合サマリー</h2>
+  <p class="section-desc">${escapeHtml(evalResult.summary ?? "N/A")}</p>
 
-  <h2>エビデンス - 引用</h2>
-  ${listToHtml(evalResult.evidence_quotes)}
+  <h2>コミュニケーションスタイル</h2>
+  <div class="comm-box">${escapeHtml(evalResult.communication_style ?? "N/A")}</div>
 
-  <h2>エビデンス - ノート</h2>
+  <h2>強み</h2>
+  ${(evalResult.strengths ?? []).map(s => `<div class="strength-box">${escapeHtml(s)}</div>`).join("") || "<p>N/A</p>"}
+
+  <h2>改善提案</h2>
+  ${(evalResult.improvements ?? []).map(s => `<div class="improve-box">${escapeHtml(s)}</div>`).join("") || "<p>N/A</p>"}
+
+  <h2>エビデンス - 発言引用</h2>
+  ${(evalResult.evidence_quotes ?? []).map(q => `<blockquote>${escapeHtml(q)}</blockquote>`).join("") || "<p>N/A</p>"}
+
+  <h2>エビデンス - 観察ノート</h2>
   ${listToHtml(evalResult.evidence_notes)}
 </body>
 </html>`;
 
-    const text = `個人評価レポート: ${evalResult.email}
+    const text = `━━━━━━━━━━━━━━━━━━
+■ 個人評価レポート: ${evalResult.email}
+━━━━━━━━━━━━━━━━━━
 
-スコア:
+■ 総合平均スコア: ${avgScore.toFixed(1)} / 5.0
+
+■ 6軸スコア
   課題理解度: ${evalResult.issue_comprehension ?? "-"}/5
   発言価値密度: ${evalResult.value_density ?? "-"}/5
   構造的思考: ${evalResult.structured_thinking ?? "-"}/5
@@ -198,13 +257,22 @@ export function buildIndividualReports(
   意思決定推進: ${evalResult.decision_drive ?? "-"}/5
   実行連携度: ${evalResult.execution_linkage ?? "-"}/5
 
-サマリー:
+■ 総合サマリー
   ${evalResult.summary ?? "N/A"}
 
-エビデンス - 引用:
+■ コミュニケーションスタイル
+  ${evalResult.communication_style ?? "N/A"}
+
+■ 強み
+${listToText(evalResult.strengths)}
+
+■ 改善提案
+${listToText(evalResult.improvements)}
+
+■ エビデンス - 発言引用
 ${listToText(evalResult.evidence_quotes)}
 
-エビデンス - ノート:
+■ エビデンス - 観察ノート
 ${listToText(evalResult.evidence_notes)}`;
 
     return { to: evalResult.email, subject, html, text };

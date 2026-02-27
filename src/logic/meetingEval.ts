@@ -32,6 +32,7 @@ export async function run(rowData: RowMeetingRaw): Promise<OutMeetingEval> {
       participation_balance: parsed.summary_scores.participation_balance,
       headline: parsed.human_summary.headline,
       overall_assessment: parsed.human_summary.overall_assessment,
+      key_topics: parsed.human_summary.key_topics,
       strength_axis: parsed.human_summary.strength_axis,
       strength_reason: parsed.human_summary.strength_reason,
       weakness_axis: parsed.human_summary.weakness_axis,
@@ -39,6 +40,7 @@ export async function run(rowData: RowMeetingRaw): Promise<OutMeetingEval> {
       special_notes: parsed.human_summary.special_notes,
       decisions: parsed.human_summary.decisions,
       action_items: parsed.human_summary.action_items,
+      recommendations: parsed.human_summary.recommendations,
       participation_note: parsed.human_summary.participation_note,
       raw_response: raw,
     };
@@ -58,6 +60,7 @@ export async function run(rowData: RowMeetingRaw): Promise<OutMeetingEval> {
       participation_balance: null,
       headline: null,
       overall_assessment: null,
+      key_topics: null,
       strength_axis: null,
       strength_reason: null,
       weakness_axis: null,
@@ -65,6 +68,7 @@ export async function run(rowData: RowMeetingRaw): Promise<OutMeetingEval> {
       special_notes: null,
       decisions: null,
       action_items: null,
+      recommendations: null,
       participation_note: null,
       raw_response: raw,
     };
