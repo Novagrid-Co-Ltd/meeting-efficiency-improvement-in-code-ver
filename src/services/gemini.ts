@@ -2,10 +2,6 @@ import { getConfig } from "../config.js";
 import { sanitizeAndParseJson } from "../utils/jsonSanitizer.js";
 import { logger } from "../utils/logger.js";
 
-function getGeminiUrl(): string {
-  return `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${getConfig().geminiApiKey}`;
-}
-
 interface GeminiApiResponse {
   candidates?: Array<{
     content?: {
@@ -14,15 +10,18 @@ interface GeminiApiResponse {
   }>;
 }
 
-async function callGemini(prompt: string): Promise<string> {
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-  };
+interface OpenAIApiResponse {
+  choices?: Array<{
+    message?: { content?: string };
+  }>;
+}
 
-  const res = await fetch(getGeminiUrl(), {
+async function callGemini(prompt: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${getConfig().geminiApiKey}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
   });
 
   if (!res.ok) {
@@ -32,15 +31,46 @@ async function callGemini(prompt: string): Promise<string> {
 
   const data = (await res.json()) as GeminiApiResponse;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error("Gemini returned empty response");
-  }
+  if (!text) throw new Error("Gemini returned empty response");
   return text;
 }
 
+async function callOpenAI(prompt: string): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${getConfig().openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`OpenAI API error ${res.status}: ${errorText}`);
+  }
+
+  const data = (await res.json()) as OpenAIApiResponse;
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error("OpenAI returned empty response");
+  return text;
+}
+
+async function callLLM(prompt: string): Promise<string> {
+  const provider = getConfig().llmProvider;
+  logger.info(`Calling LLM (${provider})`);
+  if (provider === "openai") {
+    return callOpenAI(prompt);
+  }
+  return callGemini(prompt);
+}
+
 export async function generateAndParse<T>(prompt: string): Promise<{ parsed: T | null; raw: string }> {
-  logger.info("Calling Gemini API");
-  const raw = await callGemini(prompt);
+  const raw = await callLLM(prompt);
   const parsed = sanitizeAndParseJson<T>(raw);
 
   if (parsed !== null) {
@@ -48,8 +78,8 @@ export async function generateAndParse<T>(prompt: string): Promise<{ parsed: T |
   }
 
   // Retry once on parse failure
-  logger.warn("Gemini JSON parse failed, retrying once");
-  const retryRaw = await callGemini(prompt);
+  logger.warn("LLM JSON parse failed, retrying once");
+  const retryRaw = await callLLM(prompt);
   const retryParsed = sanitizeAndParseJson<T>(retryRaw);
 
   return { parsed: retryParsed, raw: retryRaw };
