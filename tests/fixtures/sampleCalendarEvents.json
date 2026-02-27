@@ -1,0 +1,26 @@
+[
+  {
+    "id": "event-001",
+    "summary": "Weekly Standup",
+    "start": { "dateTime": "2026-02-20T10:00:00+09:00" },
+    "end": { "dateTime": "2026-02-20T10:30:00+09:00" },
+    "htmlLink": "https://calendar.google.com/event?eid=abc123xyz",
+    "organizer": { "email": "tanaka@novagrid.tech" },
+    "attendees": [
+      { "email": "tanaka@novagrid.tech", "displayName": "Tanaka", "responseStatus": "accepted", "organizer": true },
+      { "email": "sato@novagrid.co.jp", "displayName": "Sato", "responseStatus": "accepted" },
+      { "email": "guest@external.com", "displayName": "Guest", "responseStatus": "declined" }
+    ]
+  },
+  {
+    "id": "event-002",
+    "summary": "Lunch Meeting",
+    "start": { "dateTime": "2026-02-20T12:00:00+09:00" },
+    "end": { "dateTime": "2026-02-20T13:00:00+09:00" },
+    "htmlLink": "https://calendar.google.com/event?eid=other456",
+    "organizer": { "email": "sato@novagrid.tech" },
+    "attendees": [
+      { "email": "sato@novagrid.tech", "displayName": "Sato", "responseStatus": "accepted", "organizer": true }
+    ]
+  }
+]

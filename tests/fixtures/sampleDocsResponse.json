@@ -1,0 +1,65 @@
+{
+  "documentId": "doc-123",
+  "title": "Meeting Notes 2026-02-20",
+  "tabs": [
+    {
+      "tabProperties": { "tabId": "tab-overview", "title": "Overview" },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "paragraph": {
+                "elements": [
+                  {
+                    "richLink": {
+                      "richLinkProperties": {
+                        "uri": "https://calendar.google.com/event?eid=abc123xyz"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph": {
+                "elements": [
+                  { "textRun": { "content": "Meeting overview content." } }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tabProperties": { "tabId": "tab-transcript", "title": "文字起こし" },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "paragraph": {
+                "elements": [
+                  { "textRun": { "content": "田中: おはようございます。今日のアジェンダを確認しましょう。\n" } }
+                ]
+              }
+            },
+            {
+              "paragraph": {
+                "elements": [
+                  { "textRun": { "content": "佐藤: はい、まずプロジェクトの進捗について話しましょう。\n" } }
+                ]
+              }
+            },
+            {
+              "paragraph": {
+                "elements": [
+                  { "textRun": { "content": "田中: リリースは来週の予定ですが、テストがまだ完了していません。\n" } }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
