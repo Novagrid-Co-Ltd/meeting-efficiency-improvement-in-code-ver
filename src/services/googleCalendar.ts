@@ -1,6 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import { getConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
+import { AppError } from "../types/api.js";
 
 let oauth2Client: OAuth2Client | null = null;
 
@@ -71,6 +72,19 @@ export async function getEvent(calendarId: string, eventId: string): Promise<Cal
   const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   logger.info("Fetching single calendar event", { calendarId, eventId });
 
-  const res = await client.request<CalendarEvent>({ url });
-  return res.data;
+  try {
+    const res = await client.request<CalendarEvent>({ url });
+    return res.data;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } }).response?.status;
+    if (status === 404) {
+      throw new AppError({
+        code: "EVENT_NOT_FOUND",
+        message: `カレンダーイベントが見つかりません (eventId: ${eventId})`,
+        step: "fetch_event",
+        statusCode: 404,
+      });
+    }
+    throw err;
+  }
 }
