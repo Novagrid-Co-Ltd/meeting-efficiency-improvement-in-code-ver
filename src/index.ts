@@ -12,6 +12,7 @@ import phasesRouter from "./routes/phases.js";
 import milestonesRouter from "./routes/milestones.js";
 import extractedItemsRouter from "./routes/extracted-items.js";
 import projectMeetingsRouter from "./routes/project-meetings.js";
+import monthlyReportRouter from "./routes/monthlyReport.js";
 
 const app = express();
 app.use(express.json());
@@ -39,6 +40,7 @@ app.use(phasesRouter);
 app.use(milestonesRouter);
 app.use(extractedItemsRouter);
 app.use(projectMeetingsRouter);
+app.use(monthlyReportRouter);
 
 // Serve frontend static files (production: frontend/dist is copied to dist/../frontend/dist)
 const frontendDist = path.resolve(__dirname, "..", "frontend", "dist");

@@ -42,6 +42,20 @@ export interface ErrorResponse {
   };
 }
 
+export interface MonthlyReportRequest {
+  year: number;
+  month: number;
+}
+
+export interface MonthlyReportResponse {
+  ok: true;
+  period: string;
+  meetingCount: number;
+  participantCount: number;
+  meetingSummaryReport: MeetingReport;
+  individualReports: IndividualReport[];
+}
+
 export class AppError extends Error {
   public readonly code: string;
   public readonly step: string;
