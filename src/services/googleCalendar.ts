@@ -32,26 +32,38 @@ export interface CalendarAttendee {
 
 interface EventListResponse {
   items?: CalendarEvent[];
+  nextPageToken?: string;
 }
 
 export async function getEvents(calendarId: string, lookbackDays: number): Promise<CalendarEvent[]> {
   const client = getOAuth2Client();
   const now = new Date();
   const timeMin = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  const allEvents: CalendarEvent[] = [];
+  let pageToken: string | undefined;
 
-  const params = new URLSearchParams({
-    timeMin: timeMin.toISOString(),
-    timeMax: now.toISOString(),
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "250",
-  });
-
-  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
   logger.info("Fetching calendar events", { calendarId, lookbackDays });
 
-  const res = await client.request<EventListResponse>({ url });
-  return res.data.items ?? [];
+  do {
+    const params = new URLSearchParams({
+      timeMin: timeMin.toISOString(),
+      timeMax: now.toISOString(),
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "250",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
+    const res = await client.request<EventListResponse>({ url });
+
+    if (res.data.items) {
+      allEvents.push(...res.data.items);
+    }
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+
+  return allEvents;
 }
 
 export async function getEvent(calendarId: string, eventId: string): Promise<CalendarEvent> {

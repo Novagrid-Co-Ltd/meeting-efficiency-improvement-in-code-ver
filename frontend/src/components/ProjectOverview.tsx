@@ -167,6 +167,11 @@ const statusLabels: Record<string, string> = {
 export default function ProjectOverview({ project, members, projectId, onSaved }: Props) {
   const [localProject, setLocalProject] = useState(project);
 
+  // Sync localProject when parent re-fetches data
+  useEffect(() => {
+    setLocalProject(project);
+  }, [project]);
+
   const save = async (patch: Record<string, unknown>) => {
     setLocalProject((prev) => ({ ...prev, ...patch }));
     try {
