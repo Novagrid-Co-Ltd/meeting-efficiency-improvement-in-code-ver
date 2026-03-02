@@ -6,7 +6,7 @@ const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 const PORT = 3000;
 const redirectUri = `http://127.0.0.1:${PORT}`;
-const scopes = "https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/calendar.readonly";
+const scopes = "https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly";
 
 const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&access_type=offline&prompt=consent`;
 
