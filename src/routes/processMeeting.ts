@@ -75,8 +75,8 @@ router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res
 
     // 7. レポート生成
     logger.info("Step 7: Building reports");
-    const meetingReport = buildMeetingReport(meetingEvalResult, attendees);
-    const individualReports = buildIndividualReports(individualEvalResults);
+    const meetingReport = buildMeetingReport(meetingEvalResult, attendees, savedRow.event_summary);
+    const individualReports = buildIndividualReports(individualEvalResults, savedRow.event_summary);
 
     const response: ProcessMeetingResponse = {
       ok: true,

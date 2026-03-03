@@ -39,9 +39,11 @@ function axisLabel(key: string | null): string {
 export function buildMeetingReport(
   evalResult: OutMeetingEval,
   attendees: TfMeetingAttendee[],
+  meetingTitle?: string,
 ): MeetingReport {
   const to = attendees.map((a) => a.email);
-  const subject = `会議評価レポート: ${evalResult.headline ?? "評価結果"}`;
+  const titlePart = meetingTitle ?? evalResult.headline ?? "評価結果";
+  const subject = `会議評価レポート: ${titlePart}`;
 
   let chartUrl = "";
   if (evalResult.evaluation_status === "success") {
@@ -168,9 +170,11 @@ ${numberedListToText(evalResult.recommendations)}
 
 export function buildIndividualReports(
   evalResults: OutIndividualEval[],
+  meetingTitle?: string,
 ): IndividualReport[] {
   return evalResults.map((evalResult) => {
-    const subject = `個人評価レポート: ${evalResult.email}`;
+    const titlePart = meetingTitle ? `${meetingTitle} - ${evalResult.email}` : evalResult.email;
+    const subject = `個人評価レポート: ${titlePart}`;
 
     let chartUrl = "";
     if (evalResult.evaluation_status === "success") {
