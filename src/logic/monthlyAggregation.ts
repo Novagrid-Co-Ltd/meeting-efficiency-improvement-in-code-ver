@@ -17,6 +17,12 @@ export interface MeetingAxisStats {
   max: number;
 }
 
+export interface MeetingQualitativeItem {
+  meetingTitle: string;
+  date: string;
+  text: string;
+}
+
 export interface AggregatedMeetingScores {
   goal_clarity: MeetingAxisStats;
   decision_made: MeetingAxisStats;
@@ -27,6 +33,12 @@ export interface AggregatedMeetingScores {
   overallAvg: number;
   bestMeeting: { meetInstanceKey: string; title: string; date: string; avgScore: number } | null;
   worstMeeting: { meetInstanceKey: string; title: string; date: string; avgScore: number } | null;
+  // Qualitative aggregation across all meetings
+  strengthAxisCounts: Record<string, number>;
+  weaknessAxisCounts: Record<string, number>;
+  allRecommendations: MeetingQualitativeItem[];
+  allDecisions: MeetingQualitativeItem[];
+  allActionItems: MeetingQualitativeItem[];
 }
 
 export interface MeetingScoreRow {
@@ -40,6 +52,18 @@ export interface MeetingScoreRow {
   role_clarity: number;
   time_efficiency: number;
   participation_balance: number;
+  // Qualitative data from per-meeting evaluation
+  headline: string | null;
+  overall_assessment: string | null;
+  strength_axis: string | null;
+  strength_reason: string | null;
+  weakness_axis: string | null;
+  weakness_reason: string | null;
+  recommendations: string[];
+  decisions: string[];
+  action_items: string[];
+  key_topics: string[];
+  participation_note: string | null;
 }
 
 export interface IndividualMonthlyScore {
@@ -56,6 +80,12 @@ export interface IndividualMonthlyScore {
   highestAxis: { name: string; score: number };
   lowestAxis: { name: string; score: number };
   meetings: { meetInstanceKey: string; title: string; date: string; avgScore: number }[];
+  // Qualitative data aggregated across meetings
+  allStrengths: string[];
+  allImprovements: string[];
+  communicationStyles: string[];
+  summaries: string[];
+  representativeQuotes: string[];
 }
 
 export interface MonthlyData {
@@ -175,7 +205,7 @@ export function aggregateMeetingScores(
 ): { scores: AggregatedMeetingScores; rows: MeetingScoreRow[] } {
   const meetingMap = new Map(meetings.map((m) => [m.meet_instance_key, m]));
 
-  // Per-meeting score rows
+  // Per-meeting score rows (with qualitative data)
   const rows: MeetingScoreRow[] = meetingEvals.map((ev) => {
     const meeting = meetingMap.get(ev.meet_instance_key);
     return {
@@ -189,6 +219,17 @@ export function aggregateMeetingScores(
       role_clarity: ev.role_clarity ?? 0,
       time_efficiency: ev.time_efficiency ?? 0,
       participation_balance: ev.participation_balance ?? 0,
+      headline: ev.headline,
+      overall_assessment: ev.overall_assessment,
+      strength_axis: ev.strength_axis,
+      strength_reason: ev.strength_reason,
+      weakness_axis: ev.weakness_axis,
+      weakness_reason: ev.weakness_reason,
+      recommendations: ev.recommendations ?? [],
+      decisions: ev.decisions ?? [],
+      action_items: ev.action_items ?? [],
+      key_topics: ev.key_topics ?? [],
+      participation_note: ev.participation_note,
     };
   });
 
@@ -213,6 +254,31 @@ export function aggregateMeetingScores(
   const best = rows.length > 0 ? rows.reduce((a, b) => (a.avgScore >= b.avgScore ? a : b)) : null;
   const worst = rows.length > 0 ? rows.reduce((a, b) => (a.avgScore <= b.avgScore ? a : b)) : null;
 
+  // Aggregate qualitative data across all meetings
+  const strengthAxisCounts: Record<string, number> = {};
+  const weaknessAxisCounts: Record<string, number> = {};
+  const allRecommendations: MeetingQualitativeItem[] = [];
+  const allDecisions: MeetingQualitativeItem[] = [];
+  const allActionItems: MeetingQualitativeItem[] = [];
+
+  for (const row of rows) {
+    if (row.strength_axis) {
+      strengthAxisCounts[row.strength_axis] = (strengthAxisCounts[row.strength_axis] ?? 0) + 1;
+    }
+    if (row.weakness_axis) {
+      weaknessAxisCounts[row.weakness_axis] = (weaknessAxisCounts[row.weakness_axis] ?? 0) + 1;
+    }
+    for (const r of row.recommendations) {
+      allRecommendations.push({ meetingTitle: row.title, date: row.date, text: r });
+    }
+    for (const d of row.decisions) {
+      allDecisions.push({ meetingTitle: row.title, date: row.date, text: d });
+    }
+    for (const a of row.action_items) {
+      allActionItems.push({ meetingTitle: row.title, date: row.date, text: a });
+    }
+  }
+
   return {
     scores: {
       goal_clarity: axisStats["goal_clarity"]!,
@@ -228,6 +294,11 @@ export function aggregateMeetingScores(
       worstMeeting: worst
         ? { meetInstanceKey: worst.meetInstanceKey, title: worst.title, date: worst.date, avgScore: worst.avgScore }
         : null,
+      strengthAxisCounts,
+      weaknessAxisCounts,
+      allRecommendations,
+      allDecisions,
+      allActionItems,
     },
     rows,
   };
@@ -309,6 +380,21 @@ export function aggregateIndividualScores(
     });
     meetingScores.sort((a, b) => a.date.localeCompare(b.date));
 
+    // Aggregate qualitative data across meetings for this person
+    const allStrengths: string[] = [];
+    const allImprovements: string[] = [];
+    const communicationStyles: string[] = [];
+    const summaries: string[] = [];
+    const representativeQuotes: string[] = [];
+
+    for (const ev of evals) {
+      if (ev.strengths) allStrengths.push(...ev.strengths);
+      if (ev.improvements) allImprovements.push(...ev.improvements);
+      if (ev.communication_style) communicationStyles.push(ev.communication_style);
+      if (ev.summary) summaries.push(ev.summary);
+      if (ev.evidence_quotes) representativeQuotes.push(...ev.evidence_quotes);
+    }
+
     results.push({
       email,
       displayName: nameMap.get(email) ?? email,
@@ -323,6 +409,11 @@ export function aggregateIndividualScores(
       highestAxis: highest,
       lowestAxis: lowest,
       meetings: meetingScores,
+      allStrengths,
+      allImprovements,
+      communicationStyles,
+      summaries,
+      representativeQuotes: representativeQuotes.slice(0, 5), // Limit to top 5 quotes
     });
   }
 

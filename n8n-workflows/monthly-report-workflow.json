@@ -1,0 +1,215 @@
+{
+  "name": "月次レポート配信",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "毎月1日 9時実行",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nlet year = now.getFullYear();\nlet month = now.getMonth(); // 0-indexed, so this is already previous month\nif (month === 0) {\n  month = 12;\n  year = year - 1;\n}\nreturn [{ json: { year, month } }];"
+      },
+      "id": "calc-prev-month",
+      "name": "前月のyear/month計算",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://meeting-eval-api-487149397419.asia-northeast1.run.app",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Metadata-Flavor",
+              "value": "Google"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "get-oidc-token",
+      "name": "OIDCトークン取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://meeting-eval-api-487149397419.asia-northeast1.run.app/api/monthly-report",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "Mancity.94"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.data }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ year: $('前月のyear/month計算').item.json.year, month: $('前月のyear/month計算').item.json.month }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "call-monthly-api",
+      "name": "月次レポートAPI呼び出し",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.meetingSummaryReport.to.join(', ') }}",
+        "subject": "={{ $json.meetingSummaryReport.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.meetingSummaryReport.html }}",
+        "options": {}
+      },
+      "id": "send-summary-email",
+      "name": "会議サマリーメール送信",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [880, -100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('月次レポートAPI呼び出し').first().json.individualReports;\nreturn items.map(report => ({ json: report }));"
+      },
+      "id": "split-individual-reports",
+      "name": "個人レポート分割",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 100]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-individual-email",
+      "name": "個人レポートメール送信",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1100, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": ""
+        }
+      }
+    }
+  ],
+  "connections": {
+    "毎月1日 9時実行": {
+      "main": [
+        [
+          {
+            "node": "前月のyear/month計算",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "前月のyear/month計算": {
+      "main": [
+        [
+          {
+            "node": "OIDCトークン取得",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OIDCトークン取得": {
+      "main": [
+        [
+          {
+            "node": "月次レポートAPI呼び出し",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "月次レポートAPI呼び出し": {
+      "main": [
+        [
+          {
+            "node": "会議サマリーメール送信",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "個人レポート分割",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "個人レポート分割": {
+      "main": [
+        [
+          {
+            "node": "個人レポートメール送信",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "monthly-report"
+    }
+  ]
+}

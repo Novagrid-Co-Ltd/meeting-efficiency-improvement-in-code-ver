@@ -1,6 +1,6 @@
 import type { MeetingReport, IndividualReport } from "../types/api.js";
 import { buildMeetingChartUrl, buildIndividualChartUrl } from "../services/chartGenerator.js";
-import type { AggregatedMonthlyData, MeetingScoreRow, IndividualMonthlyScore } from "./monthlyAggregation.js";
+import type { AggregatedMonthlyData, MeetingScoreRow, IndividualMonthlyScore, MeetingQualitativeItem } from "./monthlyAggregation.js";
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -23,6 +23,36 @@ const MEETING_AXIS_LABELS: Record<string, string> = {
   time_efficiency: "時間効率",
   participation_balance: "発言バランス",
 };
+
+function listToHtml(items: string[]): string {
+  if (items.length === 0) return "<p>N/A</p>";
+  return "<ul>" + items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") + "</ul>";
+}
+
+function listToText(items: string[]): string {
+  if (items.length === 0) return "  N/A";
+  return items.map((item) => `  - ${item}`).join("\n");
+}
+
+function qualitativeItemsToHtml(items: MeetingQualitativeItem[]): string {
+  if (items.length === 0) return "<p>N/A</p>";
+  return items
+    .map((item) => `<li><strong>${escapeHtml(formatDate(item.date))} ${escapeHtml(item.meetingTitle)}</strong>: ${escapeHtml(item.text)}</li>`)
+    .join("");
+}
+
+function qualitativeItemsToText(items: MeetingQualitativeItem[]): string {
+  if (items.length === 0) return "  N/A";
+  return items
+    .map((item) => `  - [${formatDate(item.date)} ${item.meetingTitle}] ${item.text}`)
+    .join("\n");
+}
+
+function sortedAxisCounts(counts: Record<string, number>): { axis: string; count: number }[] {
+  return Object.entries(counts)
+    .map(([axis, count]) => ({ axis, count }))
+    .sort((a, b) => b.count - a.count);
+}
 
 // --- Monthly Summary Report ---
 
@@ -68,12 +98,27 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
   const meetingRowsHtml = data.meetingScoreRows
     .map(
       (r) =>
-        `<tr><td>${escapeHtml(formatDate(r.date))}</td><td>${escapeHtml(r.title)}</td><td>${formatScore(r.avgScore)}</td></tr>`,
+        `<tr><td>${escapeHtml(formatDate(r.date))}</td><td>${escapeHtml(r.title)}</td><td>${formatScore(r.avgScore)}</td><td>${escapeHtml(r.headline ?? "-")}</td></tr>`,
     )
     .join("");
 
   const best = s.bestMeeting;
   const worst = s.worstMeeting;
+
+  // Strength/weakness axis trend
+  const strengthTrend = sortedAxisCounts(s.strengthAxisCounts);
+  const weaknessTrend = sortedAxisCounts(s.weaknessAxisCounts);
+
+  const strengthTrendHtml = strengthTrend.length > 0
+    ? strengthTrend.map((t) => `<li>${escapeHtml(MEETING_AXIS_LABELS[t.axis] ?? t.axis)}: ${t.count}回</li>`).join("")
+    : "<li>N/A</li>";
+  const weaknessTrendHtml = weaknessTrend.length > 0
+    ? weaknessTrend.map((t) => `<li>${escapeHtml(MEETING_AXIS_LABELS[t.axis] ?? t.axis)}: ${t.count}回</li>`).join("")
+    : "<li>N/A</li>";
+
+  // Best meeting qualitative detail
+  const bestRow = best ? data.meetingScoreRows.find((r) => r.meetInstanceKey === best.meetInstanceKey) : null;
+  const worstRow = worst ? data.meetingScoreRows.find((r) => r.meetInstanceKey === worst.meetInstanceKey) : null;
 
   return `<!DOCTYPE html>
 <html>
@@ -81,6 +126,7 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
   body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; }
   h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }
   h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-top: 24px; }
+  h3 { color: #555; margin-top: 16px; }
   .score-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
   .score-table td, .score-table th { border: 1px solid #ddd; padding: 8px; text-align: left; }
   .score-table th { background: #f5f5f5; }
@@ -88,6 +134,11 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
   .highlight-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px; margin: 8px 0; line-height: 1.6; }
   .warning-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin: 8px 0; line-height: 1.6; }
   .overview { background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 16px 0; }
+  .trend-box { background: #f0f4ff; border-left: 4px solid #1a73e8; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  .trend-box.weak { border-left-color: #ea4335; }
+  .decision-item { background: #e3f2fd; padding: 10px; margin: 6px 0; border-radius: 4px; line-height: 1.5; }
+  .action-item { background: #fff8e1; padding: 10px; margin: 6px 0; border-radius: 4px; line-height: 1.5; }
+  .recommendation { background: #fce4ec; border-left: 4px solid #e91e63; padding: 12px; margin: 8px 0; line-height: 1.6; }
 </style></head>
 <body>
   <h1>${escapeHtml(period)} 会議評価 月次サマリー</h1>
@@ -107,15 +158,44 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
     ${axisRowsHtml}
   </table>
 
+  <h2>強み・弱みの傾向</h2>
+  <h3>強みとして多く評価された軸</h3>
+  <div class="trend-box"><ul>${strengthTrendHtml}</ul></div>
+  <h3>弱みとして多く評価された軸</h3>
+  <div class="trend-box weak"><ul>${weaknessTrendHtml}</ul></div>
+
   <h2>会議別一覧</h2>
   <table class="score-table">
-    <tr><th>日付</th><th>会議名</th><th>平均スコア</th></tr>
+    <tr><th>日付</th><th>会議名</th><th>平均スコア</th><th>AIヘッドライン</th></tr>
     ${meetingRowsHtml}
   </table>
 
-  ${best ? `<h2>ベスト会議</h2><div class="highlight-box"><strong>${escapeHtml(best.title)}</strong> (${escapeHtml(formatDate(best.date))})<br>平均スコア: ${formatScore(best.avgScore)}</div>` : ""}
+  ${best ? `<h2>ベスト会議</h2>
+  <div class="highlight-box">
+    <strong>${escapeHtml(best.title)}</strong> (${escapeHtml(formatDate(best.date))})<br>
+    平均スコア: ${formatScore(best.avgScore)}
+    ${bestRow?.headline ? `<br><em>${escapeHtml(bestRow.headline)}</em>` : ""}
+    ${bestRow?.overall_assessment ? `<br>${escapeHtml(bestRow.overall_assessment)}` : ""}
+    ${bestRow?.strength_axis ? `<br><strong>強み:</strong> ${escapeHtml(MEETING_AXIS_LABELS[bestRow.strength_axis] ?? bestRow.strength_axis)} - ${escapeHtml(bestRow.strength_reason ?? "")}` : ""}
+  </div>` : ""}
 
-  ${worst ? `<h2>改善が必要な会議</h2><div class="warning-box"><strong>${escapeHtml(worst.title)}</strong> (${escapeHtml(formatDate(worst.date))})<br>平均スコア: ${formatScore(worst.avgScore)}</div>` : ""}
+  ${worst ? `<h2>改善が必要な会議</h2>
+  <div class="warning-box">
+    <strong>${escapeHtml(worst.title)}</strong> (${escapeHtml(formatDate(worst.date))})<br>
+    平均スコア: ${formatScore(worst.avgScore)}
+    ${worstRow?.headline ? `<br><em>${escapeHtml(worstRow.headline)}</em>` : ""}
+    ${worstRow?.overall_assessment ? `<br>${escapeHtml(worstRow.overall_assessment)}` : ""}
+    ${worstRow?.weakness_axis ? `<br><strong>課題:</strong> ${escapeHtml(MEETING_AXIS_LABELS[worstRow.weakness_axis] ?? worstRow.weakness_axis)} - ${escapeHtml(worstRow.weakness_reason ?? "")}` : ""}
+  </div>` : ""}
+
+  ${s.allDecisions.length > 0 ? `<h2>月間の決定事項</h2>
+  <ul>${qualitativeItemsToHtml(s.allDecisions)}</ul>` : ""}
+
+  ${s.allActionItems.length > 0 ? `<h2>月間のアクションアイテム</h2>
+  <ul>${qualitativeItemsToHtml(s.allActionItems)}</ul>` : ""}
+
+  ${s.allRecommendations.length > 0 ? `<h2>AI改善提言まとめ</h2>
+  ${s.allRecommendations.map((r) => `<div class="recommendation"><strong>${escapeHtml(formatDate(r.date))} ${escapeHtml(r.meetingTitle)}</strong><br>${escapeHtml(r.text)}</div>`).join("")}` : ""}
 
 </body>
 </html>`;
@@ -137,11 +217,16 @@ function buildMonthlySummaryText(data: AggregatedMonthlyData, period: string): s
     .join("\n");
 
   const meetingLines = data.meetingScoreRows
-    .map((r) => `  ${formatDate(r.date)} | ${r.title} | ${formatScore(r.avgScore)}`)
+    .map((r) => `  ${formatDate(r.date)} | ${r.title} | ${formatScore(r.avgScore)} | ${r.headline ?? "-"}`)
     .join("\n");
 
   const best = s.bestMeeting;
   const worst = s.worstMeeting;
+  const bestRow = best ? data.meetingScoreRows.find((r) => r.meetInstanceKey === best.meetInstanceKey) : null;
+  const worstRow = worst ? data.meetingScoreRows.find((r) => r.meetInstanceKey === worst.meetInstanceKey) : null;
+
+  const strengthTrend = sortedAxisCounts(s.strengthAxisCounts);
+  const weaknessTrend = sortedAxisCounts(s.weaknessAxisCounts);
 
   return `━━━━━━━━━━━━━━━━━━
 ■ ${period} 会議評価 月次サマリー
@@ -156,10 +241,19 @@ function buildMonthlySummaryText(data: AggregatedMonthlyData, period: string): s
 ■ 6軸スコア
 ${axisLines}
 
+■ 強み・弱みの傾向
+  強みとして多く評価された軸:
+${strengthTrend.length > 0 ? strengthTrend.map((t) => `    ${MEETING_AXIS_LABELS[t.axis] ?? t.axis}: ${t.count}回`).join("\n") : "    N/A"}
+  弱みとして多く評価された軸:
+${weaknessTrend.length > 0 ? weaknessTrend.map((t) => `    ${MEETING_AXIS_LABELS[t.axis] ?? t.axis}: ${t.count}回`).join("\n") : "    N/A"}
+
 ■ 会議別一覧
 ${meetingLines || "  データなし"}
-${best ? `\n■ ベスト会議\n  ${best.title} (${formatDate(best.date)})\n  平均スコア: ${formatScore(best.avgScore)}` : ""}
-${worst ? `\n■ 改善が必要な会議\n  ${worst.title} (${formatDate(worst.date)})\n  平均スコア: ${formatScore(worst.avgScore)}` : ""}`;
+${best ? `\n■ ベスト会議\n  ${best.title} (${formatDate(best.date)})\n  平均スコア: ${formatScore(best.avgScore)}${bestRow?.headline ? `\n  ヘッドライン: ${bestRow.headline}` : ""}${bestRow?.overall_assessment ? `\n  AI分析: ${bestRow.overall_assessment}` : ""}` : ""}
+${worst ? `\n■ 改善が必要な会議\n  ${worst.title} (${formatDate(worst.date)})\n  平均スコア: ${formatScore(worst.avgScore)}${worstRow?.headline ? `\n  ヘッドライン: ${worstRow.headline}` : ""}${worstRow?.overall_assessment ? `\n  AI分析: ${worstRow.overall_assessment}` : ""}` : ""}
+${s.allDecisions.length > 0 ? `\n■ 月間の決定事項\n${qualitativeItemsToText(s.allDecisions)}` : ""}
+${s.allActionItems.length > 0 ? `\n■ 月間のアクションアイテム\n${qualitativeItemsToText(s.allActionItems)}` : ""}
+${s.allRecommendations.length > 0 ? `\n■ AI改善提言まとめ\n${qualitativeItemsToText(s.allRecommendations)}` : ""}`;
 }
 
 // --- Monthly Individual Reports ---
@@ -221,6 +315,11 @@ function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartU
   .highlight-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px; margin: 8px 0; line-height: 1.6; }
   .warning-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin: 8px 0; line-height: 1.6; }
   .overview { background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 16px 0; }
+  .strength-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 10px; margin: 6px 0; line-height: 1.5; }
+  .improve-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 10px; margin: 6px 0; line-height: 1.5; }
+  .comm-box { background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  .summary-box { background: #e3f2fd; border-left: 4px solid #1a73e8; padding: 12px; margin: 8px 0; line-height: 1.6; }
+  blockquote { border-left: 3px solid #ccc; margin: 8px 0; padding: 4px 12px; color: #555; font-style: italic; }
 </style></head>
 <body>
   <h1>${escapeHtml(period)} 個人月次評価レポート: ${escapeHtml(ind.displayName)}</h1>
@@ -239,17 +338,32 @@ function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartU
     ${axisRowsHtml}
   </table>
 
-  <h2>会議別スコア推移</h2>
-  <table class="score-table">
-    <tr><th>日付</th><th>会議名</th><th>平均スコア</th></tr>
-    ${meetingRowsHtml}
-  </table>
-
   <h2>最も高い軸</h2>
   <div class="highlight-box"><strong>${escapeHtml(ind.highestAxis.name)}</strong>: ${formatScore(ind.highestAxis.score)}</div>
 
   <h2>最も低い軸</h2>
   <div class="warning-box"><strong>${escapeHtml(ind.lowestAxis.name)}</strong>: ${formatScore(ind.lowestAxis.score)}</div>
+
+  ${ind.summaries.length > 0 ? `<h2>AI総合サマリー</h2>
+  ${ind.summaries.map((s) => `<div class="summary-box">${escapeHtml(s)}</div>`).join("")}` : ""}
+
+  ${ind.communicationStyles.length > 0 ? `<h2>コミュニケーションスタイル</h2>
+  ${ind.communicationStyles.map((cs) => `<div class="comm-box">${escapeHtml(cs)}</div>`).join("")}` : ""}
+
+  ${ind.allStrengths.length > 0 ? `<h2>強み（月間）</h2>
+  ${ind.allStrengths.map((s) => `<div class="strength-box">${escapeHtml(s)}</div>`).join("")}` : ""}
+
+  ${ind.allImprovements.length > 0 ? `<h2>改善提案（月間）</h2>
+  ${ind.allImprovements.map((s) => `<div class="improve-box">${escapeHtml(s)}</div>`).join("")}` : ""}
+
+  ${ind.representativeQuotes.length > 0 ? `<h2>代表的な発言引用</h2>
+  ${ind.representativeQuotes.map((q) => `<blockquote>${escapeHtml(q)}</blockquote>`).join("")}` : ""}
+
+  <h2>会議別スコア推移</h2>
+  <table class="score-table">
+    <tr><th>日付</th><th>会議名</th><th>平均スコア</th></tr>
+    ${meetingRowsHtml}
+  </table>
 
 </body>
 </html>`;
@@ -281,9 +395,14 @@ function buildIndividualText(ind: IndividualMonthlyScore, period: string): strin
 ■ 6軸スコア
 ${axisLines}
 
-■ 会議別スコア推移
-${meetingLines || "  データなし"}
-
 ■ 最も高い軸: ${ind.highestAxis.name} (${formatScore(ind.highestAxis.score)})
-■ 最も低い軸: ${ind.lowestAxis.name} (${formatScore(ind.lowestAxis.score)})`;
+■ 最も低い軸: ${ind.lowestAxis.name} (${formatScore(ind.lowestAxis.score)})
+${ind.summaries.length > 0 ? `\n■ AI総合サマリー\n${ind.summaries.map((s) => `  ${s}`).join("\n\n")}` : ""}
+${ind.communicationStyles.length > 0 ? `\n■ コミュニケーションスタイル\n${ind.communicationStyles.map((cs) => `  ${cs}`).join("\n\n")}` : ""}
+${ind.allStrengths.length > 0 ? `\n■ 強み（月間）\n${listToText(ind.allStrengths)}` : ""}
+${ind.allImprovements.length > 0 ? `\n■ 改善提案（月間）\n${listToText(ind.allImprovements)}` : ""}
+${ind.representativeQuotes.length > 0 ? `\n■ 代表的な発言引用\n${ind.representativeQuotes.map((q) => `  「${q}」`).join("\n")}` : ""}
+
+■ 会議別スコア推移
+${meetingLines || "  データなし"}`;
 }
