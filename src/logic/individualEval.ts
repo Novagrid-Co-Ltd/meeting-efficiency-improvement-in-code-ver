@@ -1,12 +1,19 @@
 import type { TfIndividualScoreInput } from "../types/meeting.js";
-import type { OutIndividualEval, GeminiIndividualResponse } from "../types/evaluation.js";
+import type { OutIndividualEval, DynamicIndividualResponse } from "../types/evaluation.js";
+import type { ScoringCriteria } from "../types/scoring-criteria.js";
+import type { CriteriaSnapshot } from "../types/scoring-criteria.js";
 import { generateAndParse } from "../services/gemini.js";
 import { upsertIndividualEval } from "../services/supabase.js";
-import { buildIndividualEvalPrompt, PROMPT_VERSION } from "../prompts/individualEval.js";
+import { getActiveCriteria, buildCriteriaSnapshot } from "../services/scoring-criteria.js";
+import { buildDynamicIndividualEvalPrompt, DYNAMIC_INDIVIDUAL_PROMPT_VERSION } from "../prompts/dynamicIndividualEval.js";
 import { logger } from "../utils/logger.js";
 
-async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval> {
-  const prompt = buildIndividualEvalPrompt({
+async function runOne(
+  input: TfIndividualScoreInput,
+  criteria: ScoringCriteria[],
+  snapshot: CriteriaSnapshot,
+): Promise<OutIndividualEval> {
+  const prompt = buildDynamicIndividualEvalPrompt(criteria, {
     displayName: input.display_name,
     email: input.email,
     eventSummary: input.event_summary,
@@ -16,22 +23,26 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
     transcript: input.transcript,
   });
 
-  const { parsed, raw } = await generateAndParse<GeminiIndividualResponse>(prompt);
+  const { parsed, raw } = await generateAndParse<DynamicIndividualResponse>(prompt);
 
   let evalData: OutIndividualEval;
 
   if (parsed) {
+    const dynamicScores = parsed.scores;
+
     evalData = {
       meet_instance_key: input.meet_instance_key,
       email: input.email,
       evaluation_status: "success",
-      prompt_version: PROMPT_VERSION,
-      issue_comprehension: parsed.scores.issue_comprehension,
-      value_density: parsed.scores.value_density,
-      structured_thinking: parsed.scores.structured_thinking,
-      collaborative_influence: parsed.scores.collaborative_influence,
-      decision_drive: parsed.scores.decision_drive,
-      execution_linkage: parsed.scores.execution_linkage,
+      prompt_version: DYNAMIC_INDIVIDUAL_PROMPT_VERSION,
+      // Legacy columns — dual-write for backward compatibility
+      issue_comprehension: dynamicScores["issue_comprehension"] ?? null,
+      value_density: dynamicScores["value_density"] ?? null,
+      structured_thinking: dynamicScores["structured_thinking"] ?? null,
+      collaborative_influence: dynamicScores["collaborative_influence"] ?? null,
+      decision_drive: dynamicScores["decision_drive"] ?? null,
+      execution_linkage: dynamicScores["execution_linkage"] ?? null,
+      // Qualitative fields
       evidence_quotes: parsed.evidence.quotes,
       evidence_notes: parsed.evidence.notes,
       strengths: parsed.strengths,
@@ -39,6 +50,9 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
       communication_style: parsed.communication_style,
       summary: parsed.summary,
       raw_response: raw,
+      // Dynamic JSONB fields
+      scores: dynamicScores,
+      criteria_snapshot: snapshot,
     };
   } else {
     logger.error("Individual evaluation failed", {
@@ -49,7 +63,7 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
       meet_instance_key: input.meet_instance_key,
       email: input.email,
       evaluation_status: "failed",
-      prompt_version: PROMPT_VERSION,
+      prompt_version: DYNAMIC_INDIVIDUAL_PROMPT_VERSION,
       issue_comprehension: null,
       value_density: null,
       structured_thinking: null,
@@ -63,6 +77,8 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
       communication_style: null,
       summary: null,
       raw_response: raw,
+      scores: null,
+      criteria_snapshot: snapshot,
     };
   }
 
@@ -71,12 +87,16 @@ async function runOne(input: TfIndividualScoreInput): Promise<OutIndividualEval>
 }
 
 export async function runAll(inputs: TfIndividualScoreInput[]): Promise<OutIndividualEval[]> {
+  // Fetch criteria once for all participants
+  const criteria = await getActiveCriteria("individual");
+  const snapshot = buildCriteriaSnapshot(criteria);
+
   const results: OutIndividualEval[] = [];
 
   // Sequential execution — do not parallelize
   for (const input of inputs) {
     try {
-      const result = await runOne(input);
+      const result = await runOne(input, criteria, snapshot);
       results.push(result);
     } catch (err) {
       logger.error("Individual eval error, continuing to next participant", {
@@ -87,7 +107,7 @@ export async function runAll(inputs: TfIndividualScoreInput[]): Promise<OutIndiv
         meet_instance_key: input.meet_instance_key,
         email: input.email,
         evaluation_status: "failed",
-        prompt_version: PROMPT_VERSION,
+        prompt_version: DYNAMIC_INDIVIDUAL_PROMPT_VERSION,
         issue_comprehension: null,
         value_density: null,
         structured_thinking: null,
@@ -101,6 +121,8 @@ export async function runAll(inputs: TfIndividualScoreInput[]): Promise<OutIndiv
         communication_style: null,
         summary: null,
         raw_response: null,
+        scores: null,
+        criteria_snapshot: snapshot,
       });
     }
   }

@@ -105,3 +105,17 @@ export function buildIndividualChartUrl(scores: {
     ],
   });
 }
+
+// --- Dynamic chart builders ---
+
+import type { ScoringCriteria } from "../types/scoring-criteria.js";
+import type { DynamicScores } from "../types/scoring-criteria.js";
+
+export function buildDynamicChartUrl(
+  scores: DynamicScores,
+  criteria: ScoringCriteria[],
+): string {
+  const labels = criteria.map((c) => c.name_ja);
+  const values = criteria.map((c) => scores[c.key] ?? 0);
+  return generateRadarChartUrl({ labels, values });
+}

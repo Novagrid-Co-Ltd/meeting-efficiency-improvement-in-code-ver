@@ -11,6 +11,7 @@ import { buildIndividualInputs } from "../logic/buildIndividualInput.js";
 import * as meetingEval from "../logic/meetingEval.js";
 import * as individualEval from "../logic/individualEval.js";
 import { buildMeetingReport, buildIndividualReports } from "../logic/reportFormatter.js";
+import { getActiveCriteria } from "../services/scoring-criteria.js";
 import { AppError } from "../types/api.js";
 import type { ProcessMeetingRequest, ProcessMeetingResponse, ErrorResponse } from "../types/api.js";
 import { logger } from "../utils/logger.js";
@@ -73,10 +74,14 @@ router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res
     logger.info("Step 6: Running individual evaluations");
     const individualEvalResults = await individualEval.runAll(individualInputs);
 
-    // 7. レポート生成
+    // 7. レポート生成 (dynamic criteria for report formatting)
     logger.info("Step 7: Building reports");
-    const meetingReport = buildMeetingReport(meetingEvalResult, attendees, savedRow.event_summary);
-    const individualReports = buildIndividualReports(individualEvalResults, savedRow.event_summary);
+    const [meetingCriteria, individualCriteria] = await Promise.all([
+      getActiveCriteria("meeting"),
+      getActiveCriteria("individual"),
+    ]);
+    const meetingReport = buildMeetingReport(meetingEvalResult, attendees, savedRow.event_summary, meetingCriteria);
+    const individualReports = buildIndividualReports(individualEvalResults, savedRow.event_summary, individualCriteria);
 
     const response: ProcessMeetingResponse = {
       ok: true,

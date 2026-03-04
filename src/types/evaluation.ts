@@ -1,3 +1,5 @@
+import type { CriteriaSnapshot, DynamicScores } from "./scoring-criteria.js";
+
 export interface GeminiMeetingResponse {
   summary_scores: {
     goal_clarity: number;
@@ -7,6 +9,24 @@ export interface GeminiMeetingResponse {
     time_efficiency: number;
     participation_balance: number;
   };
+  human_summary: {
+    headline: string;
+    overall_assessment: string;
+    key_topics: string[];
+    strength_axis: string;
+    strength_reason: string;
+    weakness_axis: string;
+    weakness_reason: string;
+    special_notes: string[];
+    decisions: string[];
+    action_items: string[];
+    recommendations: string[];
+    participation_note: string;
+  };
+}
+
+export interface DynamicMeetingResponse {
+  summary_scores: DynamicScores;
   human_summary: {
     headline: string;
     overall_assessment: string;
@@ -42,6 +62,18 @@ export interface GeminiIndividualResponse {
   summary: string;
 }
 
+export interface DynamicIndividualResponse {
+  scores: DynamicScores;
+  evidence: {
+    quotes: string[];
+    notes: string[];
+  };
+  strengths: string[];
+  improvements: string[];
+  communication_style: string;
+  summary: string;
+}
+
 export interface OutMeetingEval {
   id?: string;
   meet_instance_key: string;
@@ -66,6 +98,8 @@ export interface OutMeetingEval {
   recommendations: string[] | null;
   participation_note: string | null;
   raw_response: string | null;
+  scores?: DynamicScores | null;
+  criteria_snapshot?: CriteriaSnapshot | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -89,6 +123,8 @@ export interface OutIndividualEval {
   communication_style: string | null;
   summary: string | null;
   raw_response: string | null;
+  scores?: DynamicScores | null;
+  criteria_snapshot?: CriteriaSnapshot | null;
   created_at?: string;
   updated_at?: string;
 }

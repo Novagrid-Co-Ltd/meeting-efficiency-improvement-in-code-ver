@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { getConfig } from "../config.js";
 import { fetchMonthlyData, aggregateMonthlyData } from "../logic/monthlyAggregation.js";
 import { buildMonthlySummaryReport, buildMonthlyIndividualReports } from "../logic/monthlyReportFormatter.js";
+import { getActiveCriteria } from "../services/scoring-criteria.js";
 import type { MonthlyReportRequest, MonthlyReportResponse, ErrorResponse } from "../types/api.js";
 import { logger } from "../utils/logger.js";
 
@@ -46,8 +47,12 @@ router.post("/api/monthly-report", authenticateApiKey, async (req: Request, res:
   try {
     logger.info("Monthly report requested", { year, month });
 
-    // 1. Fetch data from Supabase
-    const rawData = await fetchMonthlyData(year, month);
+    // Fetch active criteria for dynamic axis resolution
+    const [rawData, meetingCriteria, individualCriteria] = await Promise.all([
+      fetchMonthlyData(year, month),
+      getActiveCriteria("meeting"),
+      getActiveCriteria("individual"),
+    ]);
 
     if (rawData.meetings.length === 0) {
       res.status(404).json({
@@ -57,10 +62,10 @@ router.post("/api/monthly-report", authenticateApiKey, async (req: Request, res:
       return;
     }
 
-    // 2. Aggregate
-    const aggregated = aggregateMonthlyData(rawData);
+    // Aggregate with dynamic criteria
+    const aggregated = aggregateMonthlyData(rawData, meetingCriteria, individualCriteria);
 
-    // 3. Build reports
+    // Build reports
     const meetingSummaryReport = buildMonthlySummaryReport(aggregated);
     const individualReports = buildMonthlyIndividualReports(aggregated);
 

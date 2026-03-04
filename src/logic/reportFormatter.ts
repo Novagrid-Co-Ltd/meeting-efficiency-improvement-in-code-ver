@@ -1,15 +1,25 @@
 import type { TfMeetingAttendee } from "../types/meeting.js";
 import type { OutMeetingEval, OutIndividualEval } from "../types/evaluation.js";
 import type { MeetingReport, IndividualReport } from "../types/api.js";
-import { buildMeetingChartUrl, buildIndividualChartUrl } from "../services/chartGenerator.js";
+import type { ScoringCriteria } from "../types/scoring-criteria.js";
+import { buildMeetingChartUrl, buildIndividualChartUrl, buildDynamicChartUrl } from "../services/chartGenerator.js";
 
-const AXIS_LABELS: Record<string, string> = {
+const MEETING_AXIS_LABELS: Record<string, string> = {
   goal_clarity: "目的の明確さ",
   decision_made: "意思決定",
   todo_clarity: "TODO明確化",
   role_clarity: "役割明確さ",
   time_efficiency: "時間効率",
   participation_balance: "発言バランス",
+};
+
+const INDIVIDUAL_AXIS_LABELS: Record<string, string> = {
+  issue_comprehension: "課題理解度",
+  value_density: "発言価値密度",
+  structured_thinking: "構造的思考",
+  collaborative_influence: "協調的影響力",
+  decision_drive: "意思決定推進",
+  execution_linkage: "実行連携度",
 };
 
 function escapeHtml(text: string): string {
@@ -31,35 +41,79 @@ function numberedListToText(items: string[] | null): string {
   return items.map((item, i) => `  ${i + 1}. ${item}`).join("\n");
 }
 
-function axisLabel(key: string | null): string {
+function getScore(ev: OutMeetingEval, axis: string): number | null {
+  if (ev.scores && axis in ev.scores) return ev.scores[axis] ?? null;
+  return (ev as unknown as Record<string, unknown>)[axis] as number | null ?? null;
+}
+
+function getIndividualScore(ev: OutIndividualEval, axis: string): number | null {
+  if (ev.scores && axis in ev.scores) return ev.scores[axis] ?? null;
+  return (ev as unknown as Record<string, unknown>)[axis] as number | null ?? null;
+}
+
+function resolveAxisLabel(key: string | null, criteria?: ScoringCriteria[]): string {
   if (!key) return "N/A";
-  return AXIS_LABELS[key] ?? key;
+  if (criteria) {
+    const found = criteria.find((c) => c.key === key);
+    if (found) return found.name_ja;
+  }
+  return MEETING_AXIS_LABELS[key] ?? INDIVIDUAL_AXIS_LABELS[key] ?? key;
 }
 
 export function buildMeetingReport(
   evalResult: OutMeetingEval,
   attendees: TfMeetingAttendee[],
   meetingTitle?: string,
+  meetingCriteria?: ScoringCriteria[],
 ): MeetingReport {
   const to = attendees.map((a) => a.email);
   const titlePart = meetingTitle ?? evalResult.headline ?? "評価結果";
   const subject = `会議評価レポート: ${titlePart}`;
 
-  let chartUrl = "";
-  if (evalResult.evaluation_status === "success") {
-    chartUrl = buildMeetingChartUrl({
-      goal_clarity: evalResult.goal_clarity ?? 0,
-      decision_made: evalResult.decision_made ?? 0,
-      todo_clarity: evalResult.todo_clarity ?? 0,
-      role_clarity: evalResult.role_clarity ?? 0,
-      time_efficiency: evalResult.time_efficiency ?? 0,
-      participation_balance: evalResult.participation_balance ?? 0,
-    });
+  // Determine which axes to use
+  const useDynamic = meetingCriteria && meetingCriteria.length > 0;
+  const axisEntries: { key: string; label: string; score: number | null }[] = [];
+
+  if (useDynamic) {
+    for (const c of meetingCriteria) {
+      axisEntries.push({ key: c.key, label: c.name_ja, score: getScore(evalResult, c.key) });
+    }
+  } else {
+    // Fallback to hardcoded 6 axes
+    for (const [key, label] of Object.entries(MEETING_AXIS_LABELS)) {
+      axisEntries.push({ key, label, score: getScore(evalResult, key) });
+    }
   }
 
-  const avgScore = evalResult.evaluation_status === "success"
-    ? ((evalResult.goal_clarity ?? 0) + (evalResult.decision_made ?? 0) + (evalResult.todo_clarity ?? 0) + (evalResult.role_clarity ?? 0) + (evalResult.time_efficiency ?? 0) + (evalResult.participation_balance ?? 0)) / 6
+  const axisCount = axisEntries.length;
+  const validScores = axisEntries.map((a) => a.score ?? 0);
+  const avgScore = evalResult.evaluation_status === "success" && axisCount > 0
+    ? validScores.reduce((s, v) => s + v, 0) / axisCount
     : 0;
+
+  let chartUrl = "";
+  if (evalResult.evaluation_status === "success") {
+    if (useDynamic && evalResult.scores) {
+      chartUrl = buildDynamicChartUrl(evalResult.scores, meetingCriteria!);
+    } else {
+      chartUrl = buildMeetingChartUrl({
+        goal_clarity: evalResult.goal_clarity ?? 0,
+        decision_made: evalResult.decision_made ?? 0,
+        todo_clarity: evalResult.todo_clarity ?? 0,
+        role_clarity: evalResult.role_clarity ?? 0,
+        time_efficiency: evalResult.time_efficiency ?? 0,
+        participation_balance: evalResult.participation_balance ?? 0,
+      });
+    }
+  }
+
+  // Dynamic score table rows
+  const scoreRowsHtml = axisEntries
+    .map((a) => `    <tr><td>${a.label}</td><td>${a.score ?? "-"}/5</td></tr>`)
+    .join("\n");
+  const scoreRowsText = axisEntries
+    .map((a) => `  ${a.label}: ${a.score ?? "-"}/5`)
+    .join("\n");
 
   const html = `<!DOCTYPE html>
 <html>
@@ -87,24 +141,19 @@ export function buildMeetingReport(
 
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>6軸スコア</h2>
+  <h2>評価スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>スコア</th></tr>
-    <tr><td>目的の明確さ</td><td>${evalResult.goal_clarity ?? "-"}/5</td></tr>
-    <tr><td>意思決定</td><td>${evalResult.decision_made ?? "-"}/5</td></tr>
-    <tr><td>TODO明確化</td><td>${evalResult.todo_clarity ?? "-"}/5</td></tr>
-    <tr><td>役割明確さ</td><td>${evalResult.role_clarity ?? "-"}/5</td></tr>
-    <tr><td>時間効率</td><td>${evalResult.time_efficiency ?? "-"}/5</td></tr>
-    <tr><td>発言バランス</td><td>${evalResult.participation_balance ?? "-"}/5</td></tr>
+${scoreRowsHtml}
   </table>
 
   <h2>主な議題</h2>
   <div class="topic-list">${listToHtml(evalResult.key_topics)}</div>
 
-  <h2>強み軸: ${escapeHtml(axisLabel(evalResult.strength_axis))}</h2>
+  <h2>強み軸: ${escapeHtml(resolveAxisLabel(evalResult.strength_axis, meetingCriteria))}</h2>
   <div class="axis-box">${escapeHtml(evalResult.strength_reason ?? "N/A")}</div>
 
-  <h2>弱み軸: ${escapeHtml(axisLabel(evalResult.weakness_axis))}</h2>
+  <h2>弱み軸: ${escapeHtml(resolveAxisLabel(evalResult.weakness_axis, meetingCriteria))}</h2>
   <div class="axis-box weak">${escapeHtml(evalResult.weakness_reason ?? "N/A")}</div>
 
   <h2>特筆事項</h2>
@@ -133,21 +182,16 @@ ${evalResult.overall_assessment ?? ""}
 
 ■ 総合平均スコア: ${avgScore.toFixed(1)} / 5.0
 
-■ 6軸スコア
-  目的の明確さ: ${evalResult.goal_clarity ?? "-"}/5
-  意思決定: ${evalResult.decision_made ?? "-"}/5
-  TODO明確化: ${evalResult.todo_clarity ?? "-"}/5
-  役割明確さ: ${evalResult.role_clarity ?? "-"}/5
-  時間効率: ${evalResult.time_efficiency ?? "-"}/5
-  発言バランス: ${evalResult.participation_balance ?? "-"}/5
+■ 評価スコア
+${scoreRowsText}
 
 ■ 主な議題
 ${numberedListToText(evalResult.key_topics)}
 
-■ 強み軸: ${axisLabel(evalResult.strength_axis)}
+■ 強み軸: ${resolveAxisLabel(evalResult.strength_axis, meetingCriteria)}
   ${evalResult.strength_reason ?? "N/A"}
 
-■ 弱み軸: ${axisLabel(evalResult.weakness_axis)}
+■ 弱み軸: ${resolveAxisLabel(evalResult.weakness_axis, meetingCriteria)}
   ${evalResult.weakness_reason ?? "N/A"}
 
 ■ 特筆事項
@@ -171,26 +215,53 @@ ${numberedListToText(evalResult.recommendations)}
 export function buildIndividualReports(
   evalResults: OutIndividualEval[],
   meetingTitle?: string,
+  individualCriteria?: ScoringCriteria[],
 ): IndividualReport[] {
   return evalResults.map((evalResult) => {
     const titlePart = meetingTitle ? `${meetingTitle} - ${evalResult.email}` : evalResult.email;
     const subject = `個人評価レポート: ${titlePart}`;
 
-    let chartUrl = "";
-    if (evalResult.evaluation_status === "success") {
-      chartUrl = buildIndividualChartUrl({
-        issue_comprehension: evalResult.issue_comprehension ?? 0,
-        value_density: evalResult.value_density ?? 0,
-        structured_thinking: evalResult.structured_thinking ?? 0,
-        collaborative_influence: evalResult.collaborative_influence ?? 0,
-        decision_drive: evalResult.decision_drive ?? 0,
-        execution_linkage: evalResult.execution_linkage ?? 0,
-      });
+    const useDynamic = individualCriteria && individualCriteria.length > 0;
+    const axisEntries: { key: string; label: string; score: number | null }[] = [];
+
+    if (useDynamic) {
+      for (const c of individualCriteria) {
+        axisEntries.push({ key: c.key, label: c.name_ja, score: getIndividualScore(evalResult, c.key) });
+      }
+    } else {
+      for (const [key, label] of Object.entries(INDIVIDUAL_AXIS_LABELS)) {
+        axisEntries.push({ key, label, score: getIndividualScore(evalResult, key) });
+      }
     }
 
-    const avgScore = evalResult.evaluation_status === "success"
-      ? ((evalResult.issue_comprehension ?? 0) + (evalResult.value_density ?? 0) + (evalResult.structured_thinking ?? 0) + (evalResult.collaborative_influence ?? 0) + (evalResult.decision_drive ?? 0) + (evalResult.execution_linkage ?? 0)) / 6
+    const axisCount = axisEntries.length;
+    const validScores = axisEntries.map((a) => a.score ?? 0);
+    const avgScore = evalResult.evaluation_status === "success" && axisCount > 0
+      ? validScores.reduce((s, v) => s + v, 0) / axisCount
       : 0;
+
+    let chartUrl = "";
+    if (evalResult.evaluation_status === "success") {
+      if (useDynamic && evalResult.scores) {
+        chartUrl = buildDynamicChartUrl(evalResult.scores, individualCriteria!);
+      } else {
+        chartUrl = buildIndividualChartUrl({
+          issue_comprehension: evalResult.issue_comprehension ?? 0,
+          value_density: evalResult.value_density ?? 0,
+          structured_thinking: evalResult.structured_thinking ?? 0,
+          collaborative_influence: evalResult.collaborative_influence ?? 0,
+          decision_drive: evalResult.decision_drive ?? 0,
+          execution_linkage: evalResult.execution_linkage ?? 0,
+        });
+      }
+    }
+
+    const scoreRowsHtml = axisEntries
+      .map((a) => `    <tr><td>${a.label}</td><td>${a.score ?? "-"}/5</td></tr>`)
+      .join("\n");
+    const scoreRowsText = axisEntries
+      .map((a) => `  ${a.label}: ${a.score ?? "-"}/5`)
+      .join("\n");
 
     const html = `<!DOCTYPE html>
 <html>
@@ -216,15 +287,10 @@ export function buildIndividualReports(
 
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>6軸スコア</h2>
+  <h2>評価スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>スコア</th></tr>
-    <tr><td>課題理解度</td><td>${evalResult.issue_comprehension ?? "-"}/5</td></tr>
-    <tr><td>発言価値密度</td><td>${evalResult.value_density ?? "-"}/5</td></tr>
-    <tr><td>構造的思考</td><td>${evalResult.structured_thinking ?? "-"}/5</td></tr>
-    <tr><td>協調的影響力</td><td>${evalResult.collaborative_influence ?? "-"}/5</td></tr>
-    <tr><td>意思決定推進</td><td>${evalResult.decision_drive ?? "-"}/5</td></tr>
-    <tr><td>実行連携度</td><td>${evalResult.execution_linkage ?? "-"}/5</td></tr>
+${scoreRowsHtml}
   </table>
 
   <h2>総合サマリー</h2>
@@ -253,13 +319,8 @@ export function buildIndividualReports(
 
 ■ 総合平均スコア: ${avgScore.toFixed(1)} / 5.0
 
-■ 6軸スコア
-  課題理解度: ${evalResult.issue_comprehension ?? "-"}/5
-  発言価値密度: ${evalResult.value_density ?? "-"}/5
-  構造的思考: ${evalResult.structured_thinking ?? "-"}/5
-  協調的影響力: ${evalResult.collaborative_influence ?? "-"}/5
-  意思決定推進: ${evalResult.decision_drive ?? "-"}/5
-  実行連携度: ${evalResult.execution_linkage ?? "-"}/5
+■ 評価スコア
+${scoreRowsText}
 
 ■ 総合サマリー
   ${evalResult.summary ?? "N/A"}

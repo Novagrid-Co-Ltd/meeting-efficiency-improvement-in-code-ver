@@ -1,5 +1,6 @@
 import type { MeetingReport, IndividualReport } from "../types/api.js";
-import { buildMeetingChartUrl, buildIndividualChartUrl } from "../services/chartGenerator.js";
+import type { ScoringCriteria } from "../types/scoring-criteria.js";
+import { buildMeetingChartUrl, buildIndividualChartUrl, buildDynamicChartUrl } from "../services/chartGenerator.js";
 import type { AggregatedMonthlyData, MeetingScoreRow, IndividualMonthlyScore, MeetingQualitativeItem } from "./monthlyAggregation.js";
 
 function escapeHtml(text: string): string {
@@ -15,7 +16,7 @@ function formatScore(score: number): string {
   return score.toFixed(1);
 }
 
-const MEETING_AXIS_LABELS: Record<string, string> = {
+const DEFAULT_MEETING_AXIS_LABELS: Record<string, string> = {
   goal_clarity: "目的の明確さ",
   decision_made: "意思決定",
   todo_clarity: "TODO明確化",
@@ -23,6 +24,23 @@ const MEETING_AXIS_LABELS: Record<string, string> = {
   time_efficiency: "時間効率",
   participation_balance: "発言バランス",
 };
+
+const DEFAULT_INDIVIDUAL_AXIS_LABELS: Record<string, string> = {
+  issue_comprehension: "課題理解度",
+  value_density: "発言価値密度",
+  structured_thinking: "構造的思考",
+  collaborative_influence: "協調的影響力",
+  decision_drive: "意思決定推進",
+  execution_linkage: "実行連携度",
+};
+
+function resolveAxisLabel(key: string, criteria?: ScoringCriteria[]): string {
+  if (criteria && criteria.length > 0) {
+    const found = criteria.find((c) => c.key === key);
+    if (found) return found.name_ja;
+  }
+  return DEFAULT_MEETING_AXIS_LABELS[key] ?? DEFAULT_INDIVIDUAL_AXIS_LABELS[key] ?? key;
+}
 
 function listToHtml(items: string[]): string {
   if (items.length === 0) return "<p>N/A</p>";
@@ -62,14 +80,27 @@ export function buildMonthlySummaryReport(data: AggregatedMonthlyData): MeetingR
   const subject = `月次会議評価サマリー: ${period}`;
 
   const scores = data.meetingScores;
-  const chartUrl = buildMeetingChartUrl({
-    goal_clarity: scores.goal_clarity.avg,
-    decision_made: scores.decision_made.avg,
-    todo_clarity: scores.todo_clarity.avg,
-    role_clarity: scores.role_clarity.avg,
-    time_efficiency: scores.time_efficiency.avg,
-    participation_balance: scores.participation_balance.avg,
-  });
+  const meetingCriteria = data.meetingCriteria;
+  const useDynamic = meetingCriteria && meetingCriteria.length > 0;
+
+  // Build chart
+  let chartUrl = "";
+  if (useDynamic) {
+    const avgScores: Record<string, number> = {};
+    for (const c of meetingCriteria) {
+      avgScores[c.key] = scores.axisStats[c.key]?.avg ?? 0;
+    }
+    chartUrl = buildDynamicChartUrl(avgScores, meetingCriteria);
+  } else {
+    chartUrl = buildMeetingChartUrl({
+      goal_clarity: scores.goal_clarity.avg,
+      decision_made: scores.decision_made.avg,
+      todo_clarity: scores.todo_clarity.avg,
+      role_clarity: scores.role_clarity.avg,
+      time_efficiency: scores.time_efficiency.avg,
+      participation_balance: scores.participation_balance.avg,
+    });
+  }
 
   const html = buildMonthlySummaryHtml(data, period, chartUrl);
   const text = buildMonthlySummaryText(data, period);
@@ -77,21 +108,38 @@ export function buildMonthlySummaryReport(data: AggregatedMonthlyData): MeetingR
   return { to, subject, html, text, chartUrl };
 }
 
+function getAxisEntries(data: AggregatedMonthlyData): { key: string; label: string; stats: { avg: number; min: number; max: number } }[] {
+  const meetingCriteria = data.meetingCriteria;
+  const s = data.meetingScores;
+
+  if (meetingCriteria && meetingCriteria.length > 0) {
+    return meetingCriteria.map((c) => ({
+      key: c.key,
+      label: c.name_ja,
+      stats: s.axisStats[c.key] ?? { avg: 0, min: 0, max: 0 },
+    }));
+  }
+
+  // Legacy fallback
+  return [
+    { key: "goal_clarity", label: "目的の明確さ", stats: s.goal_clarity },
+    { key: "decision_made", label: "意思決定", stats: s.decision_made },
+    { key: "todo_clarity", label: "TODO明確化", stats: s.todo_clarity },
+    { key: "role_clarity", label: "役割明確さ", stats: s.role_clarity },
+    { key: "time_efficiency", label: "時間効率", stats: s.time_efficiency },
+    { key: "participation_balance", label: "発言バランス", stats: s.participation_balance },
+  ];
+}
+
 function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, chartUrl: string): string {
   const s = data.meetingScores;
-  const axes = [
-    { key: "goal_clarity", stats: s.goal_clarity },
-    { key: "decision_made", stats: s.decision_made },
-    { key: "todo_clarity", stats: s.todo_clarity },
-    { key: "role_clarity", stats: s.role_clarity },
-    { key: "time_efficiency", stats: s.time_efficiency },
-    { key: "participation_balance", stats: s.participation_balance },
-  ];
+  const axes = getAxisEntries(data);
+  const meetingCriteria = data.meetingCriteria;
 
   const axisRowsHtml = axes
     .map(
       (a) =>
-        `<tr><td>${MEETING_AXIS_LABELS[a.key]}</td><td>${formatScore(a.stats.avg)}</td><td>${formatScore(a.stats.max)}</td><td>${formatScore(a.stats.min)}</td></tr>`,
+        `<tr><td>${a.label}</td><td>${formatScore(a.stats.avg)}</td><td>${formatScore(a.stats.max)}</td><td>${formatScore(a.stats.min)}</td></tr>`,
     )
     .join("");
 
@@ -105,18 +153,16 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
   const best = s.bestMeeting;
   const worst = s.worstMeeting;
 
-  // Strength/weakness axis trend
   const strengthTrend = sortedAxisCounts(s.strengthAxisCounts);
   const weaknessTrend = sortedAxisCounts(s.weaknessAxisCounts);
 
   const strengthTrendHtml = strengthTrend.length > 0
-    ? strengthTrend.map((t) => `<li>${escapeHtml(MEETING_AXIS_LABELS[t.axis] ?? t.axis)}: ${t.count}回</li>`).join("")
+    ? strengthTrend.map((t) => `<li>${escapeHtml(resolveAxisLabel(t.axis, meetingCriteria))}: ${t.count}回</li>`).join("")
     : "<li>N/A</li>";
   const weaknessTrendHtml = weaknessTrend.length > 0
-    ? weaknessTrend.map((t) => `<li>${escapeHtml(MEETING_AXIS_LABELS[t.axis] ?? t.axis)}: ${t.count}回</li>`).join("")
+    ? weaknessTrend.map((t) => `<li>${escapeHtml(resolveAxisLabel(t.axis, meetingCriteria))}: ${t.count}回</li>`).join("")
     : "<li>N/A</li>";
 
-  // Best meeting qualitative detail
   const bestRow = best ? data.meetingScoreRows.find((r) => r.meetInstanceKey === best.meetInstanceKey) : null;
   const worstRow = worst ? data.meetingScoreRows.find((r) => r.meetInstanceKey === worst.meetInstanceKey) : null;
 
@@ -152,7 +198,7 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
 
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>6軸スコア</h2>
+  <h2>評価スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>平均</th><th>最高</th><th>最低</th></tr>
     ${axisRowsHtml}
@@ -176,7 +222,7 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
     平均スコア: ${formatScore(best.avgScore)}
     ${bestRow?.headline ? `<br><em>${escapeHtml(bestRow.headline)}</em>` : ""}
     ${bestRow?.overall_assessment ? `<br>${escapeHtml(bestRow.overall_assessment)}` : ""}
-    ${bestRow?.strength_axis ? `<br><strong>強み:</strong> ${escapeHtml(MEETING_AXIS_LABELS[bestRow.strength_axis] ?? bestRow.strength_axis)} - ${escapeHtml(bestRow.strength_reason ?? "")}` : ""}
+    ${bestRow?.strength_axis ? `<br><strong>強み:</strong> ${escapeHtml(resolveAxisLabel(bestRow.strength_axis, meetingCriteria))} - ${escapeHtml(bestRow.strength_reason ?? "")}` : ""}
   </div>` : ""}
 
   ${worst ? `<h2>改善が必要な会議</h2>
@@ -185,7 +231,7 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
     平均スコア: ${formatScore(worst.avgScore)}
     ${worstRow?.headline ? `<br><em>${escapeHtml(worstRow.headline)}</em>` : ""}
     ${worstRow?.overall_assessment ? `<br>${escapeHtml(worstRow.overall_assessment)}` : ""}
-    ${worstRow?.weakness_axis ? `<br><strong>課題:</strong> ${escapeHtml(MEETING_AXIS_LABELS[worstRow.weakness_axis] ?? worstRow.weakness_axis)} - ${escapeHtml(worstRow.weakness_reason ?? "")}` : ""}
+    ${worstRow?.weakness_axis ? `<br><strong>課題:</strong> ${escapeHtml(resolveAxisLabel(worstRow.weakness_axis, meetingCriteria))} - ${escapeHtml(worstRow.weakness_reason ?? "")}` : ""}
   </div>` : ""}
 
   ${s.allDecisions.length > 0 ? `<h2>月間の決定事項</h2>
@@ -203,17 +249,11 @@ function buildMonthlySummaryHtml(data: AggregatedMonthlyData, period: string, ch
 
 function buildMonthlySummaryText(data: AggregatedMonthlyData, period: string): string {
   const s = data.meetingScores;
-  const axes = [
-    { key: "goal_clarity", stats: s.goal_clarity },
-    { key: "decision_made", stats: s.decision_made },
-    { key: "todo_clarity", stats: s.todo_clarity },
-    { key: "role_clarity", stats: s.role_clarity },
-    { key: "time_efficiency", stats: s.time_efficiency },
-    { key: "participation_balance", stats: s.participation_balance },
-  ];
+  const axes = getAxisEntries(data);
+  const meetingCriteria = data.meetingCriteria;
 
   const axisLines = axes
-    .map((a) => `  ${MEETING_AXIS_LABELS[a.key]}: 平均${formatScore(a.stats.avg)} / 最高${formatScore(a.stats.max)} / 最低${formatScore(a.stats.min)}`)
+    .map((a) => `  ${a.label}: 平均${formatScore(a.stats.avg)} / 最高${formatScore(a.stats.max)} / 最低${formatScore(a.stats.min)}`)
     .join("\n");
 
   const meetingLines = data.meetingScoreRows
@@ -238,14 +278,14 @@ function buildMonthlySummaryText(data: AggregatedMonthlyData, period: string): s
   参加者数: ${data.participantEmails.length}名
   全体平均スコア: ${formatScore(s.overallAvg)} / 5.0
 
-■ 6軸スコア
+■ 評価スコア
 ${axisLines}
 
 ■ 強み・弱みの傾向
   強みとして多く評価された軸:
-${strengthTrend.length > 0 ? strengthTrend.map((t) => `    ${MEETING_AXIS_LABELS[t.axis] ?? t.axis}: ${t.count}回`).join("\n") : "    N/A"}
+${strengthTrend.length > 0 ? strengthTrend.map((t) => `    ${resolveAxisLabel(t.axis, meetingCriteria)}: ${t.count}回`).join("\n") : "    N/A"}
   弱みとして多く評価された軸:
-${weaknessTrend.length > 0 ? weaknessTrend.map((t) => `    ${MEETING_AXIS_LABELS[t.axis] ?? t.axis}: ${t.count}回`).join("\n") : "    N/A"}
+${weaknessTrend.length > 0 ? weaknessTrend.map((t) => `    ${resolveAxisLabel(t.axis, meetingCriteria)}: ${t.count}回`).join("\n") : "    N/A"}
 
 ■ 会議別一覧
 ${meetingLines || "  データなし"}
@@ -260,29 +300,17 @@ ${s.allRecommendations.length > 0 ? `\n■ AI改善提言まとめ\n${qualitativ
 
 export function buildMonthlyIndividualReports(data: AggregatedMonthlyData): IndividualReport[] {
   const period = `${data.year}年${data.month}月`;
-  return data.individualScores.map((ind) => buildOneIndividualReport(ind, period));
+  return data.individualScores.map((ind) => buildOneIndividualReport(ind, period, data.individualCriteria));
 }
 
-function buildOneIndividualReport(ind: IndividualMonthlyScore, period: string): IndividualReport {
-  const subject = `月次個人評価レポート: ${period}`;
-
-  const chartUrl = buildIndividualChartUrl({
-    issue_comprehension: ind.issue_comprehension,
-    value_density: ind.value_density,
-    structured_thinking: ind.structured_thinking,
-    collaborative_influence: ind.collaborative_influence,
-    decision_drive: ind.decision_drive,
-    execution_linkage: ind.execution_linkage,
-  });
-
-  const html = buildIndividualHtml(ind, period, chartUrl);
-  const text = buildIndividualText(ind, period);
-
-  return { to: ind.email, subject, html, text };
-}
-
-function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartUrl: string): string {
-  const axisRows = [
+function getIndividualAxisEntries(ind: IndividualMonthlyScore, criteria?: ScoringCriteria[]): { label: string; score: number }[] {
+  if (criteria && criteria.length > 0) {
+    return criteria.map((c) => ({
+      label: c.name_ja,
+      score: ind.axisScores[c.key] ?? 0,
+    }));
+  }
+  return [
     { label: "課題理解度", score: ind.issue_comprehension },
     { label: "発言価値密度", score: ind.value_density },
     { label: "構造的思考", score: ind.structured_thinking },
@@ -290,6 +318,34 @@ function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartU
     { label: "意思決定推進", score: ind.decision_drive },
     { label: "実行連携度", score: ind.execution_linkage },
   ];
+}
+
+function buildOneIndividualReport(ind: IndividualMonthlyScore, period: string, individualCriteria?: ScoringCriteria[]): IndividualReport {
+  const subject = `月次個人評価レポート: ${period}`;
+  const useDynamic = individualCriteria && individualCriteria.length > 0;
+
+  let chartUrl = "";
+  if (useDynamic) {
+    chartUrl = buildDynamicChartUrl(ind.axisScores, individualCriteria!);
+  } else {
+    chartUrl = buildIndividualChartUrl({
+      issue_comprehension: ind.issue_comprehension,
+      value_density: ind.value_density,
+      structured_thinking: ind.structured_thinking,
+      collaborative_influence: ind.collaborative_influence,
+      decision_drive: ind.decision_drive,
+      execution_linkage: ind.execution_linkage,
+    });
+  }
+
+  const html = buildIndividualHtml(ind, period, chartUrl, individualCriteria);
+  const text = buildIndividualText(ind, period, individualCriteria);
+
+  return { to: ind.email, subject, html, text };
+}
+
+function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartUrl: string, criteria?: ScoringCriteria[]): string {
+  const axisRows = getIndividualAxisEntries(ind, criteria);
 
   const axisRowsHtml = axisRows
     .map((a) => `<tr><td>${a.label}</td><td>${formatScore(a.score)}</td></tr>`)
@@ -332,7 +388,7 @@ function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartU
 
   ${chartUrl ? `<img src="${chartUrl}" alt="Radar Chart" width="400" height="400">` : ""}
 
-  <h2>6軸スコア</h2>
+  <h2>評価スコア</h2>
   <table class="score-table">
     <tr><th>項目</th><th>月間平均</th></tr>
     ${axisRowsHtml}
@@ -369,15 +425,9 @@ function buildIndividualHtml(ind: IndividualMonthlyScore, period: string, chartU
 </html>`;
 }
 
-function buildIndividualText(ind: IndividualMonthlyScore, period: string): string {
-  const axisLines = [
-    `  課題理解度: ${formatScore(ind.issue_comprehension)}`,
-    `  発言価値密度: ${formatScore(ind.value_density)}`,
-    `  構造的思考: ${formatScore(ind.structured_thinking)}`,
-    `  協調的影響力: ${formatScore(ind.collaborative_influence)}`,
-    `  意思決定推進: ${formatScore(ind.decision_drive)}`,
-    `  実行連携度: ${formatScore(ind.execution_linkage)}`,
-  ].join("\n");
+function buildIndividualText(ind: IndividualMonthlyScore, period: string, criteria?: ScoringCriteria[]): string {
+  const axisRows = getIndividualAxisEntries(ind, criteria);
+  const axisLines = axisRows.map((a) => `  ${a.label}: ${formatScore(a.score)}`).join("\n");
 
   const meetingLines = ind.meetings
     .map((m) => `  ${formatDate(m.date)} | ${m.title} | ${formatScore(m.avgScore)}`)
@@ -392,7 +442,7 @@ function buildIndividualText(ind: IndividualMonthlyScore, period: string): strin
   参加会議数: ${ind.meetingCount}件
   全体平均スコア: ${formatScore(ind.overallAvg)} / 5.0
 
-■ 6軸スコア
+■ 評価スコア
 ${axisLines}
 
 ■ 最も高い軸: ${ind.highestAxis.name} (${formatScore(ind.highestAxis.score)})
