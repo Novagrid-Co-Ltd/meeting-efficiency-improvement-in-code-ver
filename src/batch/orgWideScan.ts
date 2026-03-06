@@ -1,22 +1,22 @@
 /**
- * バックフィルスクリプト: Drive 内の文字起こしドキュメントを一括処理
+ * 全社スキャンバッチ: 全社員のDriveを走査して文字起こしファイルを発見・処理
  *
  * Usage:
- *   npx tsx src/batch/backfill.ts              # 本実行
- *   npx tsx src/batch/backfill.ts --dry-run    # 対象一覧のみ出力
+ *   npx tsx src/batch/orgWideScan.ts              # 本実行
+ *   npx tsx src/batch/orgWideScan.ts --dry-run    # 対象一覧のみ出力
  *
  * 動作:
- *   1. Google Drive フォルダ内の全ドキュメントを取得
- *   2. 各ドキュメントから eid を抽出
- *   3. Google Calendar 全イベントと照合
- *   4. カレンダーにマッチしないドキュメントはスキップ
- *   5. 処理済み会議はスキップ
- *   6. process-meeting パイプラインを順次実行
+ *   1. Admin SDK で全ドメインユーザー取得
+ *   2. 各ユーザーの Drive を SA 委任で走査
+ *   3. 文字起こしドキュメントから eid 抽出
+ *   4. そのユーザーのカレンダーからイベントマッチ
+ *   5. 未処理なら既存パイプライン（process-meeting 相当）を実行
  */
 
 import "dotenv/config";
 import { getConfig } from "../config.js";
-import { getAuthClient } from "../services/googleAuth.js";
+import { isServiceAccountMode, getAuthClient } from "../services/googleAuth.js";
+import { listDomainUsers, type WorkspaceUser } from "../services/googleAdmin.js";
 import * as googleDocs from "../services/googleDocs.js";
 import * as googleCalendar from "../services/googleCalendar.js";
 import * as supabase from "../services/supabase.js";
@@ -31,7 +31,7 @@ import { logger } from "../utils/logger.js";
 import { createClient } from "@supabase/supabase-js";
 
 // ──────────────────────────────────────
-// Drive API: フォルダ内ファイル一覧
+// Drive API: ユーザーの Drive を走査
 // ──────────────────────────────────────
 
 interface DriveFile {
@@ -46,14 +46,17 @@ interface DriveListResponse {
   nextPageToken?: string;
 }
 
-async function listDriveFiles(folderId: string): Promise<DriveFile[]> {
-  const client = await getAuthClient();
+/**
+ * 指定ユーザーの Drive から文字起こしドキュメントを検索
+ */
+async function searchUserDriveForTranscripts(userEmail: string): Promise<DriveFile[]> {
+  const client = await getAuthClient(userEmail);
   const allFiles: DriveFile[] = [];
   let pageToken: string | undefined;
 
   do {
     const params = new URLSearchParams({
-      q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`,
+      q: "mimeType='application/vnd.google-apps.document' AND name contains '文字起こし' AND trashed=false",
       fields: "nextPageToken,files(id,name,mimeType,createdTime)",
       pageSize: "100",
       orderBy: "createdTime desc",
@@ -73,10 +76,11 @@ async function listDriveFiles(folderId: string): Promise<DriveFile[]> {
 }
 
 // ──────────────────────────────────────
-// メイン処理
+// ターゲット検出
 // ──────────────────────────────────────
 
-interface BackfillTarget {
+interface OrgScanTarget {
+  userEmail: string;
   fileId: string;
   fileName: string;
   eventId: string;
@@ -85,102 +89,53 @@ interface BackfillTarget {
   meetInstanceKey: string;
 }
 
-const INTERVAL_MS = 5000; // API レートリミット対策: 5秒間隔
+const INTERVAL_MS = 2000; // ユーザー間インターバル
+const FILE_INTERVAL_MS = 500; // ファイル間インターバル
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface CalendarListResponse {
-  items?: googleCalendar.CalendarEvent[];
-  nextPageToken?: string;
-}
+async function discoverTargetsForUser(
+  user: WorkspaceUser,
+  processedKeys: Set<string>,
+  config: ReturnType<typeof getConfig>,
+): Promise<OrgScanTarget[]> {
+  const targets: OrgScanTarget[] = [];
 
-/**
- * Calendar の全イベントを取得（ページネーション対応）
- */
-async function getAllCalendarEvents(
-  calendarId: string,
-): Promise<googleCalendar.CalendarEvent[]> {
-  const client = await getAuthClient();
-  const allEvents: googleCalendar.CalendarEvent[] = [];
-  let pageToken: string | undefined;
-  const now = new Date();
+  // 1. ユーザーの Drive を走査
+  const files = await searchUserDriveForTranscripts(user.email);
+  if (files.length === 0) return targets;
 
-  do {
-    const params = new URLSearchParams({
-      timeMin: "2024-01-01T00:00:00Z",
-      timeMax: now.toISOString(),
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: "250",
-    });
-    if (pageToken) params.set("pageToken", pageToken);
+  console.log(`   📄 ${user.email}: ${files.length} 件の文字起こしドキュメント検出`);
 
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
-    const res = await client.request<CalendarListResponse>({ url });
+  // 2. ユーザーのカレンダーイベント取得
+  const events = await googleCalendar.getEvents(
+    user.email,
+    config.calendarLookbackDays,
+    user.email,
+  );
 
-    if (res.data.items) {
-      allEvents.push(...res.data.items);
-    }
-    pageToken = res.data.nextPageToken;
-  } while (pageToken);
-
-  return allEvents;
-}
-
-async function discoverTargets(): Promise<BackfillTarget[]> {
-  const config = getConfig();
-  const targets: BackfillTarget[] = [];
-
-  // 1. Drive フォルダ内の全ドキュメント取得
-  console.log(`\n📂 Drive フォルダ (${config.driveFolderId}) のファイルを取得中...`);
-  const files = await listDriveFiles(config.driveFolderId);
-  console.log(`   → ${files.length} 件のドキュメントを検出\n`);
-
-  // 2. Calendar の全イベントを取得（ページネーション対応）
-  console.log(`📅 Calendar の全イベントを取得中...`);
-  const allEvents = await getAllCalendarEvents(config.calendarId);
-  console.log(`   → ${allEvents.length} 件のイベントを検出\n`);
-
-  // 3. 処理済み meetInstanceKey を Supabase から取得
-  console.log("📦 処理済み会議を確認中...");
-  const cfg = getConfig();
-  const sb = createClient(cfg.supabaseUrl, cfg.supabaseServiceKey);
-  const { data: existingRows } = await sb
-    .from("row_meeting_raw")
-    .select("meet_instance_key");
-  const processedKeys = new Set((existingRows ?? []).map((r: { meet_instance_key: string }) => r.meet_instance_key));
-  console.log(`   → ${processedKeys.size} 件が処理済み\n`);
-
-  // 4. 各ドキュメントからeidを抽出し、カレンダーイベントとマッチング
-  console.log("🔍 ドキュメントとイベントのマッチング中...\n");
-
+  // 3. 各ドキュメントからeidを抽出してマッチング
   for (const file of files) {
     try {
-      const doc = await googleDocs.getDocument(file.id);
+      const doc = await googleDocs.getDocument(file.id, user.email);
       const extracted = extractTranscript(doc);
 
-      if (!extracted.eid) {
-        continue;
-      }
+      if (!extracted.eid) continue;
 
-      // eid でカレンダーイベントとマッチ
       let matched;
       try {
-        matched = matchEvent(allEvents, extracted.eid);
+        matched = matchEvent(events, extracted.eid);
       } catch {
-        // カレンダーに該当イベントなし → スキップ
-        continue;
+        continue; // カレンダーに該当イベントなし
       }
 
-      // 処理済みならスキップ
-      if (processedKeys.has(matched.meetInstanceKey)) {
-        continue;
-      }
+      if (processedKeys.has(matched.meetInstanceKey)) continue;
 
-      const ev = allEvents.find((e) => e.id === matched.eventId);
+      const ev = events.find((e) => e.id === matched.eventId);
       targets.push({
+        userEmail: user.email,
         fileId: file.id,
         fileName: file.name,
         eventId: matched.eventId,
@@ -189,27 +144,34 @@ async function discoverTargets(): Promise<BackfillTarget[]> {
         meetInstanceKey: matched.meetInstanceKey,
       });
     } catch (err) {
-      // 文字起こしタブなし等は静かにスキップ
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("TRANSCRIPT_NOT_FOUND")) {
-        console.log(`   ⚠️ スキップ: ${file.name} — ${msg}`);
+        logger.warn("Skipping file in orgwide scan", {
+          user: user.email,
+          file: file.name,
+          error: msg,
+        });
       }
     }
+
+    await sleep(FILE_INTERVAL_MS);
   }
 
   return targets;
 }
 
-async function processSingle(target: BackfillTarget): Promise<"success" | "failed"> {
-  const config = getConfig();
-
+async function processSingle(target: OrgScanTarget): Promise<"success" | "failed"> {
   try {
     // 1. Docs取得 + Transcript抽出
-    const doc = await googleDocs.getDocument(target.fileId);
+    const doc = await googleDocs.getDocument(target.fileId, target.userEmail);
     const extracted = extractTranscript(doc);
 
-    // 2. Calendar詳細取得
-    const eventDetail = await googleCalendar.getEvent(config.calendarId, target.eventId);
+    // 2. Calendar詳細取得（そのユーザーのカレンダーから）
+    const eventDetail = await googleCalendar.getEvent(
+      target.userEmail,
+      target.eventId,
+      target.userEmail,
+    );
 
     // 3. ROW層
     const rowData = buildRowData({
@@ -236,37 +198,84 @@ async function processSingle(target: BackfillTarget): Promise<"success" | "faile
     return "success";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error("Backfill processing failed", {
+    logger.error("Orgwide scan processing failed", {
       meetInstanceKey: target.meetInstanceKey,
+      user: target.userEmail,
       error: msg,
     });
     return "failed";
   }
 }
 
+// ──────────────────────────────────────
+// メイン
+// ──────────────────────────────────────
+
 async function main(): Promise<void> {
   const isDryRun = process.argv.includes("--dry-run");
 
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(isDryRun ? "🔍 バックフィル (DRY RUN)" : "🚀 バックフィル (本実行)");
+  console.log(isDryRun ? "🔍 全社スキャン (DRY RUN)" : "🚀 全社スキャン (本実行)");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  // 対象検出
-  const targets = await discoverTargets();
+  if (!isServiceAccountMode()) {
+    console.error("❌ 全社スキャンにはサービスアカウント認証が必要です。");
+    console.error("   GOOGLE_SA_CREDENTIALS を設定してください。");
+    process.exit(1);
+  }
 
-  if (targets.length === 0) {
+  const config = getConfig();
+
+  // 1. ドメインユーザー取得
+  console.log("\n👥 ドメインユーザーを取得中...");
+  const users = await listDomainUsers();
+  console.log(`   → ${users.length} 名のアクティブユーザー\n`);
+
+  // 2. 処理済み meetInstanceKey を取得
+  console.log("📦 処理済み会議を確認中...");
+  const sb = createClient(config.supabaseUrl, config.supabaseServiceKey);
+  const { data: existingRows } = await sb
+    .from("row_meeting_raw")
+    .select("meet_instance_key");
+  const processedKeys = new Set(
+    (existingRows ?? []).map((r: { meet_instance_key: string }) => r.meet_instance_key),
+  );
+  console.log(`   → ${processedKeys.size} 件が処理済み\n`);
+
+  // 3. 各ユーザーの Drive を走査
+  console.log("🔍 各ユーザーの Drive を走査中...\n");
+  const allTargets: OrgScanTarget[] = [];
+
+  for (const user of users) {
+    try {
+      const targets = await discoverTargetsForUser(user, processedKeys, config);
+      allTargets.push(...targets);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`   ⚠️ ${user.email}: スキップ — ${msg}`);
+    }
+    await sleep(INTERVAL_MS);
+  }
+
+  if (allTargets.length === 0) {
     console.log("\n✅ 処理対象が見つかりませんでした。終了します。");
     process.exit(0);
   }
 
+  // 重複排除（同じ meetInstanceKey が複数ユーザーから検出される可能性）
+  const uniqueTargets = Array.from(
+    new Map(allTargets.map((t) => [t.meetInstanceKey, t])).values(),
+  );
+
   // 対象一覧表示
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`📊 マッチ結果: ${targets.length} 件`);
+  console.log(`📊 検出結果: ${uniqueTargets.length} 件（重複排除後）`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
-  for (let i = 0; i < targets.length; i++) {
-    const t = targets[i]!;
+  for (let i = 0; i < uniqueTargets.length; i++) {
+    const t = uniqueTargets[i]!;
     console.log(`  ${i + 1}. ${t.eventStart}  ${t.eventSummary}`);
+    console.log(`     User: ${t.userEmail}`);
     console.log(`     Doc: ${t.fileName} (${t.fileId})`);
     console.log(`     Key: ${t.meetInstanceKey}`);
     console.log("");
@@ -286,11 +295,11 @@ async function main(): Promise<void> {
   let successCount = 0;
   let failCount = 0;
 
-  for (let i = 0; i < targets.length; i++) {
-    const target = targets[i]!;
-    const progress = `[${i + 1}/${targets.length}]`;
+  for (let i = 0; i < uniqueTargets.length; i++) {
+    const target = uniqueTargets[i]!;
+    const progress = `[${i + 1}/${uniqueTargets.length}]`;
 
-    console.log(`${progress} 処理中: ${target.eventSummary} (${target.eventStart})`);
+    console.log(`${progress} 処理中: ${target.eventSummary} (${target.eventStart}) — ${target.userEmail}`);
 
     const result = await processSingle(target);
 
@@ -302,8 +311,7 @@ async function main(): Promise<void> {
       console.log(`${progress} ❌ 失敗 → ${target.meetInstanceKey}`);
     }
 
-    // レートリミット対策: 最後以外はインターバルを挟む
-    if (i < targets.length - 1) {
+    if (i < uniqueTargets.length - 1) {
       console.log(`   ⏳ ${INTERVAL_MS / 1000}秒待機...\n`);
       await sleep(INTERVAL_MS);
     }
@@ -313,7 +321,7 @@ async function main(): Promise<void> {
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📊 処理完了`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`  合計: ${targets.length} 件`);
+  console.log(`  合計: ${uniqueTargets.length} 件`);
   console.log(`  成功: ${successCount} 件`);
   console.log(`  失敗: ${failCount} 件`);
   console.log("");

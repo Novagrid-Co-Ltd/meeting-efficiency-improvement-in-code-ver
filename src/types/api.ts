@@ -3,6 +3,7 @@ import type { OutMeetingEval, OutIndividualEval } from "./evaluation.js";
 
 export interface ProcessMeetingRequest {
   fileId: string;
+  calendarEmail?: string;
 }
 
 export interface MeetingReport {

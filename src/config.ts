@@ -13,9 +13,16 @@ function optionalEnv(key: string, defaultValue: string): string {
 }
 
 export interface Config {
+  // Google OAuth (legacy — optional when SA is configured)
   googleClientId: string;
   googleClientSecret: string;
   googleRefreshToken: string;
+
+  // Google Service Account (optional — takes precedence over OAuth)
+  googleSaCredentials: string;
+  googleImpersonateEmail: string;
+  workspaceDomain: string;
+
   geminiApiKey: string;
   openaiApiKey: string;
   llmProvider: "gemini" | "openai";
@@ -34,10 +41,19 @@ let _config: Config | null = null;
 
 export function getConfig(): Config {
   if (!_config) {
+    const hasSa = !!process.env["GOOGLE_SA_CREDENTIALS"];
+
     _config = {
-      googleClientId: requireEnv("GOOGLE_CLIENT_ID"),
-      googleClientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
-      googleRefreshToken: requireEnv("GOOGLE_REFRESH_TOKEN"),
+      // OAuth vars are optional when SA is configured
+      googleClientId: hasSa ? (process.env["GOOGLE_CLIENT_ID"] || "") : requireEnv("GOOGLE_CLIENT_ID"),
+      googleClientSecret: hasSa ? (process.env["GOOGLE_CLIENT_SECRET"] || "") : requireEnv("GOOGLE_CLIENT_SECRET"),
+      googleRefreshToken: hasSa ? (process.env["GOOGLE_REFRESH_TOKEN"] || "") : requireEnv("GOOGLE_REFRESH_TOKEN"),
+
+      // SA vars
+      googleSaCredentials: process.env["GOOGLE_SA_CREDENTIALS"] || "",
+      googleImpersonateEmail: process.env["GOOGLE_IMPERSONATE_EMAIL"] || "",
+      workspaceDomain: process.env["WORKSPACE_DOMAIN"] || "",
+
       geminiApiKey: process.env["GEMINI_API_KEY"] || "",
       openaiApiKey: process.env["OPENAI_API_KEY"] || "",
       llmProvider: (optionalEnv("LLM_PROVIDER", "gemini") as "gemini" | "openai"),

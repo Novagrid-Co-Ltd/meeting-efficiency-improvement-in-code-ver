@@ -1,18 +1,6 @@
-import { OAuth2Client } from "google-auth-library";
-import { getConfig } from "../config.js";
+import { getAuthClient } from "./googleAuth.js";
 import { logger } from "../utils/logger.js";
 import { AppError } from "../types/api.js";
-
-let oauth2Client: OAuth2Client | null = null;
-
-function getOAuth2Client(): OAuth2Client {
-  if (!oauth2Client) {
-    const cfg = getConfig();
-    oauth2Client = new OAuth2Client(cfg.googleClientId, cfg.googleClientSecret);
-    oauth2Client.setCredentials({ refresh_token: cfg.googleRefreshToken });
-  }
-  return oauth2Client;
-}
 
 export interface CalendarEvent {
   id: string;
@@ -36,8 +24,8 @@ interface EventListResponse {
   nextPageToken?: string;
 }
 
-export async function getEvents(calendarId: string, lookbackDays: number): Promise<CalendarEvent[]> {
-  const client = getOAuth2Client();
+export async function getEvents(calendarId: string, lookbackDays: number, subjectEmail?: string): Promise<CalendarEvent[]> {
+  const client = await getAuthClient(subjectEmail);
   const now = new Date();
   const timeMin = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const allEvents: CalendarEvent[] = [];
@@ -67,8 +55,8 @@ export async function getEvents(calendarId: string, lookbackDays: number): Promi
   return allEvents;
 }
 
-export async function getEvent(calendarId: string, eventId: string): Promise<CalendarEvent> {
-  const client = getOAuth2Client();
+export async function getEvent(calendarId: string, eventId: string, subjectEmail?: string): Promise<CalendarEvent> {
+  const client = await getAuthClient(subjectEmail);
   const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
   logger.info("Fetching single calendar event", { calendarId, eventId });
 

@@ -9,7 +9,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "backfill": "tsx src/batch/backfill.ts",
-    "backfill:dry": "tsx src/batch/backfill.ts --dry-run"
+    "backfill:dry": "tsx src/batch/backfill.ts --dry-run",
+    "orgwide-scan": "tsx src/batch/orgWideScan.ts",
+    "orgwide-scan:dry": "tsx src/batch/orgWideScan.ts --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

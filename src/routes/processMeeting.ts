@@ -32,7 +32,7 @@ function authenticateApiKey(req: Request, res: Response, next: () => void): void
 }
 
 router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res: Response) => {
-  const { fileId } = req.body as ProcessMeetingRequest;
+  const { fileId, calendarEmail } = req.body as ProcessMeetingRequest;
 
   if (!fileId) {
     res.status(400).json({ ok: false, error: { code: "MISSING_FILE_ID", message: "fileId is required", step: "validation" } });
@@ -41,17 +41,19 @@ router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res
 
   try {
     const config = getConfig();
+    const targetCalendar = calendarEmail ?? config.calendarId;
+    const subjectEmail = calendarEmail || undefined;
 
     // 1. Docs取得 + Transcript抽出
     logger.info("Step 1: Fetching document", { fileId });
-    const doc = await googleDocs.getDocument(fileId);
+    const doc = await googleDocs.getDocument(fileId, subjectEmail);
     const extracted = extractTranscript(doc);
 
     // 2. Calendar照合
-    logger.info("Step 2: Matching calendar event", { eid: extracted.eid });
-    const events = await googleCalendar.getEvents(config.calendarId, config.calendarLookbackDays);
+    logger.info("Step 2: Matching calendar event", { eid: extracted.eid, calendar: targetCalendar });
+    const events = await googleCalendar.getEvents(targetCalendar, config.calendarLookbackDays, subjectEmail);
     const matched = matchEvent(events, extracted.eid);
-    const eventDetail = await googleCalendar.getEvent(config.calendarId, matched.eventId);
+    const eventDetail = await googleCalendar.getEvent(targetCalendar, matched.eventId, subjectEmail);
 
     // 3. ROW層: row_meeting_raw UPSERT
     logger.info("Step 3: Saving row data", { meetInstanceKey: matched.meetInstanceKey });
