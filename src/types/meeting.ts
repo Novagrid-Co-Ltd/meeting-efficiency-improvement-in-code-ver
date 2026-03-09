@@ -7,6 +7,7 @@ export interface RowMeetingRaw {
   transcript_tab_id: string;
   transcript_title: string;
   transcript: string;
+  summary: string;
   char_count: number;
   event_summary: string;
   event_start: string;

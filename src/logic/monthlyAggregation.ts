@@ -166,7 +166,7 @@ export async function fetchMonthlyData(year: number, month: number): Promise<Mon
   logger.info("Fetching monthly data", { year, month, startDate, endDate });
 
   const { data: meetings, error: meetingsErr } = await sb
-    .from("row_meeting_raw")
+    .from("eval_meeting_raw")
     .select("*")
     .gte("event_start", startDate)
     .lt("event_start", endDate)
@@ -181,7 +181,7 @@ export async function fetchMonthlyData(year: number, month: number): Promise<Mon
   }
 
   const { data: meetingEvals, error: meErr } = await sb
-    .from("out_meeting_eval")
+    .from("eval_meeting_score")
     .select("*")
     .in("meet_instance_key", meetKeys)
     .eq("evaluation_status", "success");
@@ -189,7 +189,7 @@ export async function fetchMonthlyData(year: number, month: number): Promise<Mon
   if (meErr) throw meErr;
 
   const { data: individualEvals, error: ieErr } = await sb
-    .from("out_individual_eval")
+    .from("eval_individual_score")
     .select("*")
     .in("meet_instance_key", meetKeys)
     .eq("evaluation_status", "success");
@@ -197,7 +197,7 @@ export async function fetchMonthlyData(year: number, month: number): Promise<Mon
   if (ieErr) throw ieErr;
 
   const { data: attendees, error: atErr } = await sb
-    .from("tf_meeting_attendee")
+    .from("eval_meeting_attendee")
     .select("*")
     .in("meet_instance_key", meetKeys);
 

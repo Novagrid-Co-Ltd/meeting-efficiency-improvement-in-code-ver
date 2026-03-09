@@ -3,6 +3,7 @@ import { AppError } from "../types/api.js";
 
 export interface ExtractedTranscript {
   transcript: string;
+  summary: string;
   eid: string;
   documentId: string;
   transcriptTabId: string;
@@ -74,8 +75,20 @@ export function extractTranscript(doc: DocsDocument): ExtractedTranscript {
   const transcript = extractTextFromContent(content);
   const eid = extractEidFromTabs(tabs);
 
+  // Extract summary from non-transcript tabs (typically the main/first tab)
+  const summaryParts: string[] = [];
+  for (const tab of tabs) {
+    const title = tab.tabProperties?.title ?? "";
+    if (isTranscriptTab(title)) continue;
+    const tabContent = tab.documentTab?.body?.content ?? [];
+    const text = extractTextFromContent(tabContent).trim();
+    if (text) summaryParts.push(text);
+  }
+  const summary = summaryParts.join("\n\n");
+
   return {
     transcript,
+    summary,
     eid,
     documentId: doc.documentId,
     transcriptTabId: transcriptTab.tabProperties?.tabId ?? "",

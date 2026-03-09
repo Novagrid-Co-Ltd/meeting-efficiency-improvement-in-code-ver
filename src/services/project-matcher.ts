@@ -22,7 +22,7 @@ export interface MatchResult {
  */
 export async function matchMeetingToProjects(meetingId: string, meetingTitle: string): Promise<string[]> {
   const { data: projects } = await getSupabase()
-    .from("projects")
+    .from("pjhub_projects")
     .select("id, calendar_keywords")
     .in("status", ["active", "on_hold"]);
 
@@ -43,7 +43,7 @@ export async function matchMeetingToProjects(meetingId: string, meetingTitle: st
 
   // 既に紐付け済みのものを除外
   const { data: existing } = await getSupabase()
-    .from("project_meetings")
+    .from("pjhub_project_meetings")
     .select("project_id")
     .eq("meeting_id", meetingId);
 
@@ -57,7 +57,7 @@ export async function matchMeetingToProjects(meetingId: string, meetingTitle: st
       matched_by: "ai" as const,
     }));
 
-    const { error } = await getSupabase().from("project_meetings").insert(rows);
+    const { error } = await getSupabase().from("pjhub_project_meetings").insert(rows);
 
     if (error) {
       logger.error("Failed to insert project_meetings", { meetingId, error: error.message });
@@ -75,7 +75,7 @@ export async function matchMeetingToProjects(meetingId: string, meetingTitle: st
 export async function matchAllUnlinkedMeetings(): Promise<MatchResult[]> {
   // 全会議を取得
   const { data: allMeetings } = await getSupabase()
-    .from("row_meeting_raw")
+    .from("eval_meeting_raw")
     .select("id, event_summary")
     .order("created_at", { ascending: false });
 
@@ -83,7 +83,7 @@ export async function matchAllUnlinkedMeetings(): Promise<MatchResult[]> {
 
   // 既に紐付け済みの会議IDを取得
   const { data: linkedRows } = await getSupabase()
-    .from("project_meetings")
+    .from("pjhub_project_meetings")
     .select("meeting_id");
 
   const linkedSet = new Set((linkedRows ?? []).map((r: { meeting_id: string }) => r.meeting_id));
@@ -115,7 +115,7 @@ export async function matchAllUnlinkedMeetings(): Promise<MatchResult[]> {
 export async function ensureMeetingProjectLinks(meetingId: string): Promise<string[]> {
   // 既存の紐付けを確認
   const { data: existing } = await getSupabase()
-    .from("project_meetings")
+    .from("pjhub_project_meetings")
     .select("project_id")
     .eq("meeting_id", meetingId);
 
@@ -125,7 +125,7 @@ export async function ensureMeetingProjectLinks(meetingId: string): Promise<stri
 
   // 紐付けがないので会議タイトルを取得してマッチングを試みる
   const { data: meeting } = await getSupabase()
-    .from("row_meeting_raw")
+    .from("eval_meeting_raw")
     .select("event_summary")
     .eq("id", meetingId)
     .single();

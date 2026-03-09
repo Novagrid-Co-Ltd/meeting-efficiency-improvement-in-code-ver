@@ -23,7 +23,7 @@ export default function MeetingHistory({ meetings }: Props) {
   return (
     <div className="space-y-2">
       {meetings.map((pm) => {
-        const meeting = pm.row_meeting_raw;
+        const meeting = pm.eval_meeting_raw;
         if (!meeting) return null;
 
         const startDate = meeting.event_start

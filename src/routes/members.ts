@@ -30,7 +30,7 @@ function auth(req: Request, res: Response, next: () => void): void {
 router.get("/api/members", auth, async (_req: Request, res: Response) => {
   try {
     const { data, error } = await sb()
-      .from("master_person_identity")
+      .from("mst_person_identity")
       .select("id, display_name, email, department, role")
       .order("display_name");
     if (error) throw error;

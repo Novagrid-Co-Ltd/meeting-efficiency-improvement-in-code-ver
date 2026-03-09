@@ -235,7 +235,7 @@ async function main(): Promise<void> {
   console.log("📦 処理済み会議を確認中...");
   const sb = createClient(config.supabaseUrl, config.supabaseServiceKey);
   const { data: existingRows } = await sb
-    .from("row_meeting_raw")
+    .from("eval_meeting_raw")
     .select("meet_instance_key");
   const processedKeys = new Set(
     (existingRows ?? []).map((r: { meet_instance_key: string }) => r.meet_instance_key),

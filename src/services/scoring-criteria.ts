@@ -18,7 +18,7 @@ function getSupabase(): SupabaseClient {
 
 export async function getActiveCriteria(type: "meeting" | "individual"): Promise<ScoringCriteria[]> {
   const { data, error } = await getSupabase()
-    .from("scoring_criteria")
+    .from("eval_scoring_criteria")
     .select("*")
     .eq("type", type)
     .eq("is_active", true)
@@ -28,7 +28,7 @@ export async function getActiveCriteria(type: "meeting" | "individual"): Promise
 }
 
 export async function getAllCriteria(type?: "meeting" | "individual"): Promise<ScoringCriteria[]> {
-  let query = getSupabase().from("scoring_criteria").select("*");
+  let query = getSupabase().from("eval_scoring_criteria").select("*");
   if (type) query = query.eq("type", type);
   query = query.order("type").order("sort_order", { ascending: true });
   const { data, error } = await query;
@@ -38,7 +38,7 @@ export async function getAllCriteria(type?: "meeting" | "individual"): Promise<S
 
 export async function getCriteriaById(id: string): Promise<ScoringCriteria | null> {
   const { data, error } = await getSupabase()
-    .from("scoring_criteria")
+    .from("eval_scoring_criteria")
     .select("*")
     .eq("id", id)
     .single();
@@ -55,7 +55,7 @@ export async function createCriteria(input: CreateCriteriaInput): Promise<Scorin
   const sb = getSupabase();
 
   const { data, error } = await sb
-    .from("scoring_criteria")
+    .from("eval_scoring_criteria")
     .insert({
       type: input.type,
       key: input.key,
@@ -70,7 +70,7 @@ export async function createCriteria(input: CreateCriteriaInput): Promise<Scorin
 
   const created = data as ScoringCriteria;
 
-  await sb.from("scoring_criteria_history").insert({
+  await sb.from("eval_scoring_criteria_history").insert({
     criteria_id: created.id,
     action: "created",
     old_values: null,
@@ -112,7 +112,7 @@ export async function updateCriteria(id: string, input: UpdateCriteriaInput): Pr
   }
 
   const { data, error } = await sb
-    .from("scoring_criteria")
+    .from("eval_scoring_criteria")
     .update(updatePayload)
     .eq("id", id)
     .select()
@@ -127,7 +127,7 @@ export async function updateCriteria(id: string, input: UpdateCriteriaInput): Pr
     action = input.is_active ? "reactivated" : "deactivated";
   }
 
-  await sb.from("scoring_criteria_history").insert({
+  await sb.from("eval_scoring_criteria_history").insert({
     criteria_id: id,
     action,
     old_values: oldValues,
@@ -143,7 +143,7 @@ export async function updateCriteria(id: string, input: UpdateCriteriaInput): Pr
 
 export async function getCriteriaHistory(criteriaId: string): Promise<ScoringCriteriaHistory[]> {
   const { data, error } = await getSupabase()
-    .from("scoring_criteria_history")
+    .from("eval_scoring_criteria_history")
     .select("*")
     .eq("criteria_id", criteriaId)
     .order("created_at", { ascending: false });

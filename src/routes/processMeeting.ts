@@ -55,7 +55,7 @@ router.post("/api/process-meeting", authenticateApiKey, async (req: Request, res
     const matched = matchEvent(events, extracted.eid);
     const eventDetail = await googleCalendar.getEvent(targetCalendar, matched.eventId, subjectEmail);
 
-    // 3. ROW層: row_meeting_raw UPSERT
+    // 3. ROW層: eval_meeting_raw UPSERT
     logger.info("Step 3: Saving row data", { meetInstanceKey: matched.meetInstanceKey });
     const rowData = buildRowData({ extracted, eventDetail, meetInstanceKey: matched.meetInstanceKey, eventId: matched.eventId });
     const savedRow = await supabase.upsertRowData(rowData);

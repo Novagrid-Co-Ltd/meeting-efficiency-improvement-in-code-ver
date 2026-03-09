@@ -148,7 +148,7 @@ async function discoverTargets(): Promise<BackfillTarget[]> {
   const cfg = getConfig();
   const sb = createClient(cfg.supabaseUrl, cfg.supabaseServiceKey);
   const { data: existingRows } = await sb
-    .from("row_meeting_raw")
+    .from("eval_meeting_raw")
     .select("meet_instance_key");
   const processedKeys = new Set((existingRows ?? []).map((r: { meet_instance_key: string }) => r.meet_instance_key));
   console.log(`   → ${processedKeys.size} 件が処理済み\n`);

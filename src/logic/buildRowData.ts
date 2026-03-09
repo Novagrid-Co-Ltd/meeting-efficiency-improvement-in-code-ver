@@ -19,6 +19,7 @@ export function buildRowData(input: BuildRowDataInput): RowMeetingRaw {
     transcript_tab_id: extracted.transcriptTabId,
     transcript_title: extracted.transcriptTitle,
     transcript: extracted.transcript,
+    summary: extracted.summary,
     char_count: extracted.charCount,
     event_summary: eventDetail.summary ?? "",
     event_start: eventDetail.start?.dateTime ?? eventDetail.start?.date ?? "",
