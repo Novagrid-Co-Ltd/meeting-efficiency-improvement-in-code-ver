@@ -81,6 +81,11 @@ function getSaClient(subjectEmail?: string): AuthClient {
     [key: string]: unknown;
   };
 
+  // dotenv may leave literal \n in private_key — convert to real newlines
+  if (credentials.private_key) {
+    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+  }
+
   logger.info("Creating SA auth client", { subject: subject || "(none)" });
 
   const auth = new GoogleAuth({
