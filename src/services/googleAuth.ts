@@ -70,7 +70,12 @@ function getSaClient(subjectEmail?: string): AuthClient {
   const cached = clientCache.get(cacheKey);
   if (cached) return cached;
 
-  const credentials = JSON.parse(cfg.googleSaCredentials!) as {
+  let raw = cfg.googleSaCredentials!;
+  // Base64 encoded JSON support (avoids newline/space corruption in env vars)
+  if (!raw.trimStart().startsWith("{")) {
+    raw = Buffer.from(raw, "base64").toString("utf-8");
+  }
+  const credentials = JSON.parse(raw) as {
     client_email: string;
     private_key: string;
     [key: string]: unknown;
