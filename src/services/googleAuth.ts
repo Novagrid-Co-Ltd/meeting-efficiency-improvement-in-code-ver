@@ -6,7 +6,7 @@
  * 2. Legacy mode: GOOGLE_CLIENT_ID + REFRESH_TOKEN → 従来の OAuth2Client
  */
 
-import { GoogleAuth, OAuth2Client } from "google-auth-library";
+import { GoogleAuth, JWT, OAuth2Client } from "google-auth-library";
 import type { AuthClient } from "google-auth-library";
 import { getConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
@@ -73,7 +73,7 @@ function getSaClient(subjectEmail?: string): AuthClient {
   let raw = cfg.googleSaCredentials!;
   // Base64 encoded JSON support (avoids newline/space corruption in env vars)
   if (!raw.trimStart().startsWith("{")) {
-    raw = Buffer.from(raw, "base64").toString("utf-8");
+    raw = Buffer.from(raw.replace(/\s/g, ""), "base64").toString("utf-8");
   }
   const credentials = JSON.parse(raw) as {
     client_email: string;
@@ -81,24 +81,22 @@ function getSaClient(subjectEmail?: string): AuthClient {
     [key: string]: unknown;
   };
 
-  // dotenv may leave literal \n in private_key — convert to real newlines
+  // Ensure private_key has real newlines
   if (credentials.private_key) {
     credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
   }
 
   logger.info("Creating SA auth client", { subject: subject || "(none)" });
 
-  const auth = new GoogleAuth({
-    credentials,
+  const client = new JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
     scopes: SCOPES,
-    clientOptions: subject ? { subject } : undefined,
+    subject: subject || undefined,
   });
 
-  // GoogleAuth itself implements AuthClient-compatible getAccessToken
-  // We store the GoogleAuth instance as the client
-  const client = auth as unknown as AuthClient;
-  clientCache.set(cacheKey, client);
-  return client;
+  clientCache.set(cacheKey, client as unknown as AuthClient);
+  return client as unknown as AuthClient;
 }
 
 // ──────────────────────────────────────
