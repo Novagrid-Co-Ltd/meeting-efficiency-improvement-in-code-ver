@@ -29,7 +29,7 @@ function auth(req: Request, res: Response, next: () => void): void {
 // GET /api/projects/:projectId/meetings
 router.get("/api/projects/:projectId/meetings", auth, async (req: Request, res: Response) => {
   try {
-    // No FK between pjhub_project_meetings and eval_meeting_raw, so manual join
+    // No FK between project_meetings and row_meeting_raw, so manual join
     const { data: pmRows, error } = await sb()
       .from("pjhub_project_meetings")
       .select("*")
@@ -56,7 +56,7 @@ router.get("/api/projects/:projectId/meetings", auth, async (req: Request, res: 
 
     const combined = rows.map((r: { meeting_id: string }) => ({
       ...r,
-      eval_meeting_raw: meetingMap.get(r.meeting_id) ?? null,
+      row_meeting_raw: meetingMap.get(r.meeting_id) ?? null,
     }));
 
     res.json({ ok: true, data: combined });

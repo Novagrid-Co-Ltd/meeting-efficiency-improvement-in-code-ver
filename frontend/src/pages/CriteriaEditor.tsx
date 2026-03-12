@@ -62,7 +62,7 @@ export default function CriteriaEditor() {
         <h1 className="text-2xl font-bold text-gray-900">採点軸エディタ</h1>
         <button
           onClick={handleAdd}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+          className="px-4 py-2 bg-corp text-white rounded-lg text-sm hover:bg-corp-dark"
         >
           + 新規追加
         </button>
@@ -74,7 +74,7 @@ export default function CriteriaEditor() {
           onClick={() => { setTab("meeting"); setShowForm(false); setEditing(null); }}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
             tab === "meeting"
-              ? "border-blue-600 text-blue-600"
+              ? "border-corp text-corp"
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
@@ -84,7 +84,7 @@ export default function CriteriaEditor() {
           onClick={() => { setTab("individual"); setShowForm(false); setEditing(null); }}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
             tab === "individual"
-              ? "border-blue-600 text-blue-600"
+              ? "border-corp text-corp"
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >

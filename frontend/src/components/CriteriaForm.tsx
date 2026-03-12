@@ -70,7 +70,7 @@ export default function CriteriaForm({ type, editing, onSaved, onCancel }: Props
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-3">
+    <form onSubmit={handleSubmit} className="border border-corp/30 rounded-lg p-4 bg-corp-light space-y-3">
       <h3 className="font-semibold text-gray-900">
         {editing ? `編集: ${editing.name_ja}` : "新規採点軸を追加"}
       </h3>
@@ -145,7 +145,7 @@ export default function CriteriaForm({ type, editing, onSaved, onCancel }: Props
         <button
           type="submit"
           disabled={saving}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+          className="px-4 py-2 bg-corp text-white rounded text-sm hover:bg-corp-dark disabled:opacity-50"
         >
           {saving ? "保存中..." : editing ? "更新" : "追加"}
         </button>

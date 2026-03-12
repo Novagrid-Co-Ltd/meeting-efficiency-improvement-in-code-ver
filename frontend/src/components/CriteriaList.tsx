@@ -37,7 +37,7 @@ export default function CriteriaList({ criteria, onEdit, onRefresh }: Props) {
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-mono text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                <span className="font-mono text-sm text-corp bg-corp-light px-2 py-0.5 rounded">
                   {c.key}
                 </span>
                 <span className="font-semibold text-gray-900">{c.name_ja}</span>

@@ -104,7 +104,7 @@ router.get("/api/projects/:id", auth, async (req: Request, res: Response) => {
         .limit(20),
     ]);
 
-    // Manual join: pjhub_project_meetings -> eval_meeting_raw (no FK)
+    // Manual join: project_meetings -> row_meeting_raw (no FK)
     const pmRows = pmRes.data ?? [];
     let meetings: unknown[] = pmRows;
     if (pmRows.length > 0) {
@@ -117,7 +117,7 @@ router.get("/api/projects/:id", auth, async (req: Request, res: Response) => {
       for (const m of rawMeetings ?? []) meetingMap.set((m as { id: string }).id, m);
       meetings = pmRows.map((r: { meeting_id: string }) => ({
         ...r,
-        eval_meeting_raw: meetingMap.get(r.meeting_id) ?? null,
+        row_meeting_raw: meetingMap.get(r.meeting_id) ?? null,
       }));
     }
 

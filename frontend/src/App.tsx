@@ -12,8 +12,8 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
       to={to}
       className={`text-sm no-underline px-3 py-1 rounded ${
         isActive
-          ? "bg-blue-100 text-blue-700 font-medium"
-          : "text-gray-600 hover:text-gray-900"
+          ? "bg-corp-dark text-white font-medium"
+          : "text-white/80 hover:text-white"
       }`}
     >
       {children}
@@ -24,10 +24,10 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
 function App() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6">
+      <header className="bg-corp text-white px-6 py-3 flex items-center gap-6">
         <Link
           to="/projects"
-          className="text-xl font-bold text-gray-900 no-underline"
+          className="text-xl font-bold text-white no-underline"
         >
           PJ Hub
         </Link>
